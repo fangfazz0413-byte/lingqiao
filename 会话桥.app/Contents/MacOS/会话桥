@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+BRIDGE_REPO_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+BRIDGE_APP_DIR="$BRIDGE_REPO_DIR/app"
+BRIDGE_RUNTIME_PYTHON="$BRIDGE_REPO_DIR/.bridge/runtime/bin/python3"
+BRIDGE_LOG="$BRIDGE_APP_DIR/startup-error.log"
+umask 077
+for BRIDGE_CANDIDATE in "${BRIDGE_PYTHON:-}" "$BRIDGE_RUNTIME_PYTHON" /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 /usr/local/bin/python3 "$(command -v python3 || true)" /usr/bin/python3; do
+  [ -x "$BRIDGE_CANDIDATE" ] || continue
+  if "$BRIDGE_CANDIDATE" -c 'import webview, AppKit, Quartz, Security, WebKit' >/dev/null 2>&1; then
+    exec "$BRIDGE_CANDIDATE" "$BRIDGE_APP_DIR/server.py" >>"$BRIDGE_LOG" 2>&1
+  fi
+done
+BRIDGE_ERROR="灵桥缺少桌面 Python 依赖（pywebview、Cocoa、Quartz、Security、WebKit）。请在终端执行：/bin/bash \"$BRIDGE_APP_DIR/repair-runtime.sh\"。详情见：$BRIDGE_LOG"
+printf '%s\n' "$BRIDGE_ERROR" >>"$BRIDGE_LOG"
+/usr/bin/osascript - "$BRIDGE_ERROR" <<'APPLESCRIPT'
+on run argv
+  display alert "灵桥无法启动" message (item 1 of argv) as critical
+end run
+APPLESCRIPT
+exit 1

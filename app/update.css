@@ -1,0 +1,20 @@
+/* 检查更新弹窗（update.js）：沿用 index.html 的 .modal / .btn 样式，只补列表和进度。 */
+.upd-mask { z-index: 74; }
+.upd-modal { width: min(580px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; }
+.upd-repo { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.upd-repo-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+.upd-repo-head b { color: var(--text); }
+.upd-ver { color: var(--text3); font-variant-numeric: tabular-nums; }
+.upd-state { margin-left: auto; font-size: 12px; color: var(--text2); }
+.upd-state.new { color: var(--red); }
+.upd-state.warn { color: #ff9f0a; }
+.upd-changes { margin: 6px 0 0 18px; font-size: 12px; color: var(--text2); line-height: 1.6; }
+.upd-note { font-size: 12px; color: var(--text3); margin-top: 8px; }
+.upd-note.warn { color: #ff9f0a; }
+.upd-job { margin-top: 10px; font-size: 12px; color: var(--text2); background: var(--card2); border-radius: 8px; padding: 8px 10px; line-height: 1.6; }
+.upd-job.ok { color: var(--green); }
+.upd-job.bad { color: #ff453a; }
+.upd-job pre { margin-top: 6px; max-height: 180px; overflow: auto; font-size: 11px; white-space: pre-wrap; color: var(--text2); }
+.upd-error { margin-top: 10px; font-size: 12px; color: #ff453a; }
+.upd-modal .btn.primary { background: var(--red); border-color: var(--red); color: #fff; }
+.upd-modal .btn:disabled { opacity: .45; cursor: default; }

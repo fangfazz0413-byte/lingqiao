@@ -1,0 +1,71 @@
+/* 灵桥 3.3 · Claude 双账号会话：全部用灵桥的皮肤变量，五套皮肤、四种字体自动跟随。 */
+.as { --as-ok: var(--green); --as-bad: #ff5d6c; --as-warn: var(--orange); --as-run: var(--accent);
+  --as-ok-soft: color-mix(in srgb, var(--as-ok) 15%, transparent); --as-bad-soft: color-mix(in srgb, var(--as-bad) 15%, transparent);
+  --as-warn-soft: color-mix(in srgb, var(--as-warn) 16%, transparent); --as-run-soft: color-mix(in srgb, var(--as-run) 16%, transparent);
+  color: var(--text); max-width: 1100px; }
+:root[data-theme="cream"] .as { --as-bad: #d23a4d; --as-warn: #b9741b; }
+.as code { font-family: "SF Mono", Menlo, monospace; font-size: 11.5px; word-break: break-all; }
+.as-dim { color: var(--text3); font-size: 12px; }
+.as-warn-text { color: var(--as-warn); font-size: 12px; margin-top: 6px; }
+.as-spacer { flex: 1; }
+
+.as-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; margin-bottom: 14px; font-size: 13px; line-height: 1.6; }
+.as-banner.ok { background: var(--as-ok-soft); color: var(--as-ok); border: 1px solid color-mix(in srgb, var(--as-ok) 32%, transparent); }
+.as-banner.bad { background: var(--as-bad-soft); color: var(--as-bad); border: 1px solid color-mix(in srgb, var(--as-bad) 35%, transparent); }
+.as-banner.warn { background: var(--as-warn-soft); color: var(--as-warn); border: 1px solid color-mix(in srgb, var(--as-warn) 35%, transparent); }
+.as-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+.as-accounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.as-acc { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 13px 15px; }
+.as-acc.recent { border-color: color-mix(in srgb, var(--as-run) 45%, var(--border)); }
+.as-acc.other { opacity: .85; }
+.as-acc-name { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.as-acc-id { font-family: "SF Mono", Menlo, monospace; font-size: 11px; color: var(--text3); margin: 3px 0 7px; }
+.as-acc-stats { font-size: 12.5px; color: var(--text2); }
+.as-acc-stats b { color: var(--text); font-size: 14px; }
+.as-others { margin: -4px 0 14px; }
+.as-others > summary { cursor: pointer; font-size: 12px; color: var(--text2); margin-bottom: 10px; }
+
+.as-chip { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 99px; font-size: 11.5px; line-height: 1.6; white-space: nowrap;
+  border: 1px solid transparent; background: var(--card2); color: var(--text2); font-weight: 600; }
+.as-chip.ok { background: var(--as-ok-soft); color: var(--as-ok); border-color: color-mix(in srgb, var(--as-ok) 30%, transparent); }
+.as-chip.bad { background: var(--as-bad-soft); color: var(--as-bad); border-color: color-mix(in srgb, var(--as-bad) 34%, transparent); }
+.as-chip.warn { background: var(--as-warn-soft); color: var(--as-warn); border-color: color-mix(in srgb, var(--as-warn) 30%, transparent); }
+.as-chip.run { background: var(--as-run-soft); color: var(--as-run); border-color: color-mix(in srgb, var(--as-run) 30%, transparent); }
+.as-chip.none { color: var(--text3); }
+
+.as-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 13px 15px; margin-bottom: 14px; }
+.as-form { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; font-size: 13px; }
+.as-form label { display: inline-flex; align-items: center; gap: 7px; color: var(--text2); }
+.as-form select { background: var(--card2); color: var(--text); border: 1px solid var(--border2); border-radius: 8px; padding: 6px 8px; font: inherit; max-width: 280px; }
+.as-check { cursor: pointer; }
+.as-check input { accent-color: var(--red); }
+.as-hint { flex-basis: 100%; font-size: 12px; color: var(--text3); }
+.as-primary { background: var(--accent-soft); border-color: var(--red); color: var(--text); font-weight: 600; }
+.as .btn:disabled, .as-modal .btn:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.4); }
+.as-mini { padding: 4px 10px; font-size: 12px; }
+
+.as-plan-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; font-size: 14px; }
+.as-counts { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 8px; }
+.as-plan details { margin-top: 6px; }
+.as-plan summary { cursor: pointer; font-size: 12.5px; color: var(--text2); padding: 3px 0; }
+.as-list { margin: 4px 0 6px 18px; font-size: 12.5px; line-height: 1.75; max-height: 260px; overflow: auto; }
+.as-old { color: var(--text3); text-decoration: line-through; }
+.as-line { font-size: 12.5px; color: var(--text2); margin-top: 6px; line-height: 1.6; }
+.as-actions { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.as-done.undone { opacity: .8; }
+
+.as-runs { display: grid; gap: 0; }
+.as-run { display: grid; grid-template-columns: 150px minmax(180px, 1.4fr) minmax(120px, 1fr) 70px minmax(120px, 1fr); gap: 10px; align-items: center;
+  padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+.as-run:first-child { border-top: 0; }
+.as-run-at { font-variant-numeric: tabular-nums; color: var(--text2); }
+.as-run-backup { font-family: "SF Mono", Menlo, monospace; font-size: 11px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.as-modal .m-body { line-height: 1.75; }
+.as-modal-check { display: flex; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--text); }
+
+@media (max-width: 860px) {
+  .as-run { grid-template-columns: 1fr auto; }
+  .as-run-dir, .as-run-backup { grid-column: 1 / -1; }
+  .as-form select { max-width: 100%; }
+}

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d0f13; --card: #15181e; --card2: #1d222a; --border: #262b34;
+    --glow: #fb6b83; --glow2: #fba0b0; --deep: #b8445d;
+    --fg: #f1f3f7; --dim: #9da5b4; --ok: #52db8f; --warn: #ffb833; --bad: #ff525c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; color: var(--fg);
+    background: var(--bg);
+    padding: 12px; user-select: none; overflow: hidden;
+    border-radius: 14px;
+  }
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px; margin-bottom: 10px;
+  }
+  .p-title { font-size: 12px; font-weight: 600; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px; }
+  .p-title .i { color: var(--glow2); }
+  /* 顶部大卡 */
+  .hero { display: flex; align-items: center; gap: 16px; }
+  .ring { position: relative; width: 104px; height: 104px; flex-shrink: 0; }
+  .ring .mid { position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; }
+  .ring .pct { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .ring .cap { font-size: 10px; color: var(--dim); }
+  .hero .h-main { min-width: 0; }
+  .hero .h-big {
+    font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums;
+    color: var(--fg); line-height: 1.25;
+  }
+  .hero .h-lbl { font-size: 11px; color: var(--dim); margin-top: 1px; }
+  .hero .h-sub { font-size: 11px; color: var(--dim); margin-top: 6px;
+    font-variant-numeric: tabular-nums; }
+  .hero .h-reset { font-size: 11px; color: var(--glow2); margin-top: 2px; }
+  /* 趋势 */
+  .trend svg { display: block; width: 100%; height: 64px; }
+  .trend .legend { display: flex; gap: 10px; font-size: 10px; color: var(--dim); margin-top: 4px; }
+  .trend .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 3px; }
+  /* 额度行 */
+  .q-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .q-row .q-name { width: 84px; font-size: 12px; flex-shrink: 0; }
+  .q-row .q-bar { flex: 1; height: 5px; background: var(--bg); border-radius: 99px;
+    overflow: hidden; }
+  .q-row .q-bar i { display: block; height: 100%; border-radius: 99px; }
+  .q-row .q-pct { width: 42px; text-align: right; font-size: 12px; font-weight: 600;
+    font-variant-numeric: tabular-nums; }
+  /* 按钮 */
+  .actions { display: flex; gap: 8px; margin-top: 4px; }
+  .btn-open {
+    flex: 1; border: 1px solid color-mix(in srgb,var(--glow) 28%,transparent); border-radius: 10px; padding: 10px 0; font-size: 13px;
+    font-weight: 600; color: var(--fg); cursor: pointer;
+    background: color-mix(in srgb,var(--glow) 14%,transparent);
+  }
+  .btn-open:active { transform: translateY(1px); }
+  .btn-ico {
+    width: 40px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--card); color: var(--dim); font-size: 15px; cursor: pointer;
+  }
+  .btn-ico:hover { background: var(--card2); color: var(--fg); }
+  .foot { text-align: center; font-size: 10px; color: var(--dim); margin-top: 8px;
+    font-variant-numeric: tabular-nums; }
+
+  button { font-family: inherit; transition: background .15s ease, border-color .15s ease; }
+  button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+  .btn-open:hover { background: color-mix(in srgb,var(--glow) 22%,transparent); }
+  button:disabled { cursor: wait; opacity: .55; }
+
+  .brand-icon { width: 20px; height: 20px; object-fit: contain; border-radius: 5px; flex-shrink: 0; vertical-align: middle; }
+  .q-row .q-name { width: 118px; display: inline-flex; align-items: center; gap: 7px; }
+
+  :root[data-theme="ocean"] { --bg:#0c131b; --card:#14222e; --card2:#1c3040; --border:#263b4c; --glow:#62c7ff; --glow2:#8dd3ff; --deep:#3a87ad; --fg:#eef8ff; --dim:#9eb9c9; --ok:#6be4b2; --warn:#ffd176; --bad:#ff758d; --cyan:#8dd3ff; --violet:#bca0ff; --orange:#ff9c78; --teal:#72dec8; }
+  :root[data-theme="mint"] { --bg:#0d1514; --card:#14221f; --card2:#1d332d; --border:#29443b; --glow:#73d6a6; --glow2:#91dfc0; --deep:#397c64; --fg:#f0fbf4; --dim:#a2c0b1; --ok:#73d6a6; --warn:#f0c46e; --bad:#ff7b7e; --cyan:#91dfc0; --violet:#b49aff; --orange:#f3a06a; --teal:#72d9c7; }
+  :root[data-theme="lavender"] { --bg:#12101a; --card:#211b2d; --card2:#30273f; --border:#413653; --glow:#c49aff; --glow2:#d6bcff; --deep:#805cad; --fg:#faf7ff; --dim:#b6a9c7; --ok:#72ddba; --warn:#f3c978; --bad:#ff7d9b; --cyan:#9db8ff; --violet:#d0acff; --orange:#ff9b7d; --teal:#75d7d2; }
+  :root[data-theme="cream"] { color-scheme:light; --bg:#f5f7fb; --card:#fff; --card2:#f0f3f8; --border:#dce3ed; --glow:#df637d; --glow2:#ee8fa0; --deep:#b94c65; --fg:#202631; --dim:#647083; --ok:#269b70; --warn:#bd7e24; --bad:#d94b5f; --cyan:#6489dc; --violet:#8e6ad3; --orange:#d66f45; --teal:#289f99; }
+  :root[data-font="round"] body { font-family:"Yuanti SC","Arial Rounded MT Bold",-apple-system,sans-serif; }
+  :root[data-font="modern"] body { font-family:"Avenir Next","PingFang SC","Hiragino Sans GB",sans-serif; }
+  :root[data-font="hand"] body { font-family:"Kaiti SC","STKaiti","Noteworthy",serif; }
+</style>
+</head>
+<body>
+  <div class="panel hero">
+    <div class="ring">
+      <svg width="104" height="104" viewBox="0 0 104 104">
+        <circle cx="52" cy="52" r="44" stroke="rgba(0,0,0,.45)" stroke-width="10" fill="none"/>
+        <circle id="ring-arc" cx="52" cy="52" r="44" stroke="url(#rg)" stroke-width="10"
+          fill="none" stroke-linecap="round" stroke-dasharray="0 276.5"
+          transform="rotate(-90 52 52)"/>
+        <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="var(--glow)"/><stop offset="1" stop-color="var(--glow2)"/>
+        </linearGradient></defs>
+      </svg>
+      <div class="mid"><div class="pct" id="ring-pct">–%</div><div class="cap">剩余</div></div>
+    </div>
+    <div class="h-main">
+      <div class="h-big" id="h-month">–</div>
+      <div class="h-lbl">本月 Token</div>
+      <div class="h-sub" id="h-today">–</div>
+      <div class="h-reset" id="h-reset">–</div>
+    </div>
+  </div>
+
+  <div class="panel trend">
+    <div class="p-title"><span class="i">⚡</span>今日趋势</div>
+    <svg id="trend-svg" viewBox="0 0 300 64" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--glow)"></span>今日累计</span>
+      <span><span class="dot" style="background:var(--dim)"></span>7 日均值</span>
+    </div>
+  </div>
+
+  <div class="panel" id="quota-panel">
+    <div class="q-row" style="margin-top:0"><span class="q-name">智谱 GLM</span>
+      <div class="q-bar"><i></i></div><span class="q-pct">–</span></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-open" onclick="openMain()">打开灵桥</button>
+    <button class="btn-ico" id="refresh-button" title="重新查询额度并统计用量" onclick="loadPanel(true)">↻</button>
+    <button class="btn-ico" title="退出" onclick="quitApp()">⏻</button>
+  </div>
+  <div id="panel-error" role="status" style="color:var(--warn);font-size:11px;margin-top:6px;max-height:70px;overflow:auto"></div>
+  <div class="foot" id="foot">载入中…</div>
+
+<script>
+
+function brandId(name) {
+  const value = String(name || "").toLowerCase();
+  if (/cc[ -]?switch/.test(value)) return "cc-switch";
+  if (/workbuddy|codebuddy/.test(value)) return "workbuddy";
+  if (/zcode/.test(value)) return "zcode";
+  if (/codex/.test(value)) return "codex";
+  if (/claude|anthropic/.test(value)) return "claude";
+  if (/gemini|google/.test(value)) return "gemini";
+  if (/glm|zhipu|智谱|z\.ai/.test(value)) return "glm";
+  if (/kimi|moonshot/.test(value)) return "kimi";
+  if (/minimax/.test(value)) return "minimax";
+  if (/^gpt|openai|chatgpt/.test(value)) return "openai";
+  return "";
+}
+function brandIcon(name, cls = "") {
+  const id = brandId(name);
+  return id ? `<img class="brand-icon ${cls}" src="/assets/icons/${id}.png" alt="" aria-hidden="true" loading="lazy">` : "";
+}
+
+function syncAppearance() {
+  try {
+    const p=JSON.parse(localStorage.getItem("lingqiao.appearance.v1") || "{}");
+    if (document.documentElement?.dataset) {
+      document.documentElement.dataset.theme = ["ocean","mint","lavender","cream"].includes(p?.theme) ? p.theme : "";
+      document.documentElement.dataset.font = ["round","modern","hand","system"].includes(p?.font) ? p.font : "round";
+    }
+    if (typeof panelState!=="undefined" && panelState.data) renderPanel(panelState.data);
+  } catch {}
+}
+syncAppearance(); window.addEventListener("storage", syncAppearance); window.addEventListener("focus", syncAppearance); document.addEventListener("visibilitychange", syncAppearance);
+const HEAT = pct => pct >= 95 ? "#ff525c" : pct >= 80 ? "#ffb833" : "#52db8f";
+const panelState = { request: 0, controller: null, refreshing: false, data: null };
+const $ = id => document.getElementById(id);
+function esc(text) { const div = document.createElement("div"); div.textContent = text == null ? "" : String(text); return div.innerHTML; }
+function fmtTok(number) { if (!Number.isFinite(Number(number))) return "–";
+  if (number >= 1e8) return (number / 1e8).toFixed(2) + "亿";
+  if (number >= 1e4) return (number / 1e4).toFixed(1) + "万"; return String(Math.round(number)); }
+function fmtNum(number) { return Number.isFinite(Number(number)) ? Math.round(number).toLocaleString() : "–"; }
+function countdown(at) {
+  const diff = at * 1000 - Date.now();
+  if (diff <= 0) return "即将重置";
+  const days = Math.floor(diff / 86400000), hours = Math.floor(diff % 86400000 / 3600000), minutes = Math.floor(diff % 3600000 / 60000);
+  if (days > 0) return `${days} 天 ${hours} 小时后重置`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分后重置`;
+  return `${Math.max(1, minutes)} 分钟后重置`;
+}
+function poly(values, width, height, color, dash, peak) {
+  if (!values.length) return "";
+  const max = peak || Math.max(1, ...values);
+  const points = values.map((value, index) => `${(index / Math.max(1, values.length - 1) * width).toFixed(1)},${(height - 3 - value / max * (height - 8)).toFixed(1)}`).join(" ");
+  return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" ${dash ? 'stroke-dasharray="4 3" opacity=".7"' : ""}/>`;
+}
+function panelSnapshotTime(at) {
+  if (!Number.isFinite(Number(at)) || Number(at) <= 0) return "数据快照时间未知";
+  const date = new Date(Number(at) * 1000);
+  return `数据快照 ${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+async function panelRequest(url, options = {}) {
+  const { signal, timeoutMs = 30000, body, ...request } = options;
+  const controller = new AbortController(), relay = () => controller.abort(signal?.reason);
+  if (signal?.aborted) relay(); else signal?.addEventListener("abort", relay, { once: true });
+  const timer = setTimeout(() => controller.abort(new Error("请求超时，请重试")), timeoutMs);
+  const headers = new Headers(request.headers || {});
+  if (window.BRIDGE_TOKEN) headers.set("X-Bridge-Token", window.BRIDGE_TOKEN);
+  if (body !== undefined) headers.set("Content-Type", "application/json");
+  try {
+    const response = await fetch(url, { ...request, headers, signal: controller.signal, credentials: "same-origin", cache: "no-store",
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    let data; try { data = await response.json(); } catch { throw new Error(`服务返回无效数据（HTTP ${response.status}）`); }
+    if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+    return data;
+  } finally { clearTimeout(timer); signal?.removeEventListener("abort", relay); }
+}
+function quotaHeadline(provider) {
+  return (Array.isArray(provider.windows) ? provider.windows : [])
+    .filter(window => !window.unlimited && window.pct != null && Number.isFinite(Number(window.pct)))
+    .sort((left, right) => Number(right.pct) - Number(left.pct))[0];
+}
+function panelColor(name,fallback) { try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback; } catch { return fallback; } }
+function renderPanel(data) {
+  if (!data.local || !data.local.stat_today) throw new Error("用量快照格式不正确");
+  const local = data.local, quota = Array.isArray(data.quota) ? data.quota : [];
+  let worst = null;
+  for (const provider of quota) {
+    if (provider.configured === false || provider.error) continue;
+    const headline = quotaHeadline(provider);
+    if (headline && (!worst || Number(headline.pct) > Number(worst.window.pct))) worst = { provider, window: headline };
+  }
+  const remaining = worst ? Math.max(0, Math.min(100, 100 - Number(worst.window.pct))) : null;
+  $("ring-arc").setAttribute("stroke-dasharray", `${remaining == null ? 0 : (remaining / 100 * 276.5).toFixed(1)} 276.5`);
+  $("ring-pct").textContent = remaining == null ? "–%" : Math.round(remaining) + "%";
+  $("h-month").textContent = fmtTok(local.month_tokens);
+  $("h-today").textContent = `今日 ${fmtTok(local.stat_today.tokens)} · ${fmtNum(local.stat_today.calls)} 次`;
+  $("h-reset").textContent = worst?.window.reset_ts ? countdown(worst.window.reset_ts) : "";
+  const average = Array.isArray(local.avg7_curve) ? local.avg7_curve : [], today = Array.isArray(local.today_curve) ? local.today_curve : [];
+  const peak = Math.max(1, ...average, ...today);
+  $("trend-svg").innerHTML = poly(average, 300, 64, panelColor("--dim","#9da5b4"), true, peak) + poly(today, 300, 64, panelColor("--glow","#fb6b83"), false, peak);
+  $("quota-panel").innerHTML = quota.length ? quota.map(provider => {
+    const label = `<span class="q-name">${brandIcon(provider.label || provider.name)}${esc(provider.label || provider.name)}</span>`;
+    if (provider.configured === false) return `<div class="q-row">${label}<span>未配置</span></div>`;
+    if (provider.error) return `<div class="q-row">${label}<span style="color:var(--bad)" title="${esc(provider.error).replace(/"/g, "&quot;")}">查询失败</span></div>`;
+    const headline = quotaHeadline(provider);
+    if (headline) {
+      const pct = Number(headline.pct);
+      return `<div class="q-row">${label}<div class="q-bar"><i style="width:${Math.max(0, Math.min(100, pct))}%;background:${HEAT(pct)}"></i></div><span class="q-pct">${Math.round(pct)}%</span></div>`;
+    }
+    return `<div class="q-row">${label}<span style="color:var(--dim)">${(provider.windows || []).some(window => window.unlimited === true) ? "∞ 不限额" : "额度未知"}</span></div>`;
+  }).join("") : '<div class="q-row">没有可用额度数据</div>';
+  $("foot").textContent = `${panelSnapshotTime(data.at)} · 每 30 分钟检查`;
+}
+async function loadPanel(force = false) {
+  if (panelState.refreshing) return;
+  panelState.controller?.abort(); const controller = new AbortController(); panelState.controller = controller;
+  const request = ++panelState.request; panelState.refreshing = force;
+  $("refresh-button").disabled = true; $("panel-error").textContent = force ? "正在查询额度并重新统计…" : "";
+  try {
+    let data;
+    if (force) {
+      const refreshed = await panelRequest("/api/usage/refresh", { method: "POST", body: {}, signal: controller.signal, timeoutMs: 180000 });
+      data = refreshed.snapshot || refreshed;
+      if (!data.local) data = await panelRequest("/api/usage", { signal: controller.signal });
+    } else data = await panelRequest("/api/usage", { signal: controller.signal });
+    if (request !== panelState.request) return;
+    renderPanel(data); panelState.data = data; $("panel-error").textContent = "";
+  } catch (error) {
+    if (controller.signal.aborted || request !== panelState.request) return;
+    $("panel-error").textContent = `${force ? "刷新" : "读取"}失败：${error.message}${panelState.data ? "。保留上次快照。" : ""}`;
+    if (!panelState.data) $("foot").textContent = "点击刷新重试";
+  } finally {
+    if (request === panelState.request) { panelState.refreshing = false; $("refresh-button").disabled = false; }
+  }
+}
+async function nativeAction(name) {
+  try {
+    const action = window.pywebview?.api?.[name];
+    if (typeof action !== "function") throw new Error("请从灵桥菜单栏打开此面板");
+    await action();
+  } catch (error) { $("panel-error").textContent = error.message || String(error); }
+}
+function openMain() { nativeAction("open_main"); }
+function quitApp() { if (confirm("退出灵桥？（菜单栏也会关闭）")) nativeAction("quit_app"); }
+window.addEventListener("blur", () => { setTimeout(() => { if (!document.hasFocus() && window.pywebview?.api) nativeAction("hide_panel"); }, 120); });
+window.addEventListener("focus", () => loadPanel(false));
+window.addEventListener("bridge-panel-shown", () => loadPanel(false));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPanel(false); });
+setInterval(() => { if (!document.hidden) loadPanel(false); }, 30 * 60 * 1000);
+loadPanel();
+</script>
+</body>
+</html>
