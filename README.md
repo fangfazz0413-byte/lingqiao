@@ -87,7 +87,7 @@ bash install.sh
 
 ## 许可证
 
-待定。确定后放在仓库根目录的 `LICENSE` 文件里。
+[MIT](LICENSE)：可以自由使用、修改、分发，也可以商用，保留原作者署名和许可声明即可。
 
 ---
 
@@ -107,3 +107,5 @@ Everything runs locally; the UI is served on 127.0.0.1 with a per-launch token.
 Install: `git clone` this repository, run `bash install.sh` (needs Python ≥ 3.10, Homebrew Python 3.13 recommended), then open `会话桥.app`.
 
 This is an unofficial tool, not affiliated with any of the vendors above. The UI is in Chinese.
+
+License: [MIT](LICENSE).

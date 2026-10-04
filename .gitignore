@@ -1,0 +1,15 @@
+# 灵桥自己的数据：运行环境、会话索引、操作日志、回收站、备份、设置
+/.bridge/
+
+# 运行时生成：日志、会话缓存、从本机 App 提取的图标、Python 缓存
+/app/server.log*
+/app/startup-error.log
+/app/cache-sessions-*.json
+/app/assets/icons/
+__pycache__/
+
+# 自己装的插件（可能是私有仓库），只保留说明
+/plugins/*
+!/plugins/README.md
+
+.DS_Store
