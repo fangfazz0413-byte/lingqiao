@@ -19,7 +19,7 @@ from unittest import mock
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'app')); sys.path.insert(0, str(ROOT / '.bridge'))
+sys.path.insert(0, str(ROOT / 'app'))
 import account_sync as asy  # noqa: E402
 
 A = 'aaaaaaaa-0000-4000-8000-00000000000a'

@@ -43,7 +43,6 @@ CONFIG = BRIDGE / 'config.json'
 CACHE_TTL = 60
 MAX_SYNC_BYTES = 512 * 1024 * 1024
 MAX_TURN_BYTES = 4 * 1024 * 1024
-sys.path.insert(0,str(BRIDGE))
 import bridge_state
 import sync
 import zcode_inject as zi

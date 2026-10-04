@@ -11,7 +11,7 @@ from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 import http.client
 ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT/'app'));sys.path.insert(0,str(ROOT/'.bridge'))
+sys.path.insert(0,str(ROOT/'app'))
 import server as s
 
 class ServerIntegration(unittest.TestCase):

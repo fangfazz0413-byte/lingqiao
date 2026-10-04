@@ -14,7 +14,7 @@ import unittest
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'app')); sys.path.insert(0, str(ROOT / '.bridge'))
+sys.path.insert(0, str(ROOT / 'app'))
 import bridge_state  # noqa: E402
 import updater  # noqa: E402
 

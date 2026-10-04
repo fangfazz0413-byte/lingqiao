@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / ".bridge"))
+sys.path.insert(0, str(ROOT / "app"))
 os.environ.setdefault("BRIDGE_HOME", str(ROOT / "tests" / "fixture-home"))
 os.environ.setdefault("BRIDGE_REPO", str(ROOT))
 zi = importlib.import_module("zcode_inject")
@@ -191,7 +191,7 @@ for _ in range(10):
         data['count'] += 1
         bs.atomic_json(path, data)
 """
-        command = [sys.executable, "-c", code, str(ROOT / ".bridge"), str(path), str(lock)]
+        command = [sys.executable, "-c", code, str(ROOT / "app"), str(path), str(lock)]
         processes = [subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                      for _ in range(2)]
         for process in processes:

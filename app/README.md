@@ -133,9 +133,11 @@
 - `session_transfer.py`、`transfer.js`、`transfer.css`：会话导出 / 导入；写入用 `bridge_ops.py` 里的 `import_raw_session`、`import_text_session`。
 - `usage_collector.py`：内置用量与额度采集器，保留原有四类本地来源和三类额度供应商。
 - `usage_backend.py`：私有快照校验、刷新并发控制、供应商状态与钥匙串配置接口。
-- `.bridge/bridge_state.py`：原子私有JSON、跨进程锁、来源/清单协议。
-- `.bridge/sync.py --export-only`：只导出；旧互注入入口停用。
-- `.bridge/zcode_inject.py --db <练习库> --dry-run/--rollback`：练习库状态按数据库身份隔离；回滚精确匹配清单并保留可恢复删除日志。
+- `bridge_state.py`：原子私有JSON、跨进程锁、来源/清单协议。
+- `sync.py`：各工具会话的文字解析和转换；`python3 app/sync.py --export-only` 只导出，旧互注入入口停用。
+- `zcode_inject.py`：写入 ZCode 的工具；`python3 app/zcode_inject.py --db <练习库> --dry-run/--rollback` 的练习库状态按数据库身份隔离，回滚精确匹配清单并保留可恢复删除日志。
+
+`.bridge/` 文件夹只放这台电脑的数据（不进 Git），各文件的作用见 [../docs/数据层说明.md](../docs/数据层说明.md)。
 
 执行 `.bridge/runtime/bin/python3 -B -m unittest discover -s tests`。测试只用虚构内容、临时文件夹和四个工具真实表结构的空副本（`tests/fixtures/*.sql`），不修改真实工具库；页面测试用 Node.js 跑，没装 Node 会跳过。
 

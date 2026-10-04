@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from contextlib import contextmanager
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / '.bridge'))
 sys.path.insert(0, str(ROOT / 'app'))
 import bridge_state
 import bridge_ops as ops
