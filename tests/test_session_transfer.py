@@ -143,7 +143,8 @@ class TransferTests(unittest.TestCase):
     def test_export_zip_has_manifest_raw_material_and_turns(self):
         zip_path, result = self.export()
         self.assertEqual(result['sessions'], 4)
-        self.assertEqual(oct(zip_path.stat().st_mode & 0o777), '0o600')
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(oct(zip_path.stat().st_mode & 0o777), '0o600')
         with zipfile.ZipFile(zip_path) as zf:
             manifest = json.loads(zf.read('manifest.json'))
             self.assertEqual(manifest['format'], session_transfer.FORMAT)
@@ -264,7 +265,7 @@ class TransferTests(unittest.TestCase):
         plan = self.plan(tb, zip_path)
         self.assertTrue(plan['claude']['running'])
         claude = self.items_by_tool(plan)['claude']
-        with self.assertRaisesRegex(ValueError, '⌘Q'):
+        with self.assertRaisesRegex(ValueError, '⌘Q|托盘'):
             self.run_import(tb, plan, [{'id': claude['id'], 'mode': 'raw', 'target': 'claude'}])
         zitem = self.items_by_tool(plan)['zcode']
         result = self.run_import(tb, plan, [{'id': zitem['id'], 'mode': 'raw', 'target': 'zcode'}])

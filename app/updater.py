@@ -8,12 +8,12 @@
 - 会话、配置、回收站这些数据不在 git 里，更新不碰。
 - 自动检查默认每天一次，只看不改；.bridge/config.json 里写 "update": {"auto_check": false} 可以关掉。
 """
-import fcntl
 import json
 import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -21,7 +21,10 @@ import time
 
 import bridge_state
 
+WINDOWS = os.name == 'nt'
 GIT_CANDIDATES = ('/opt/homebrew/bin/git', '/usr/local/bin/git')
+WINDOWS_GIT_CANDIDATES = (os.path.join(os.environ.get('ProgramFiles', r'C:\Program Files'), 'Git', 'cmd', 'git.exe'),
+                          os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'Git', 'cmd', 'git.exe'))
 CHECK_EVERY = 24 * 3600
 FIRST_CHECK_DELAY = 90
 FETCH_TIMEOUT = 90
@@ -32,7 +35,7 @@ RUNS_KEPT = 30
 TAIL_LINES = 40
 CREDENTIALS = re.compile(r'(\w+://)[^/@\s]+@')
 VERSION_LINE = re.compile(r"^VERSION\s*=\s*'([0-9][0-9.]*)'", re.M)
-REQUIREMENTS = 'app/requirements-desktop.txt'
+REQUIREMENTS = 'app/requirements-windows.txt' if WINDOWS else 'app/requirements-desktop.txt'
 EXECUTABLES = ('会话桥.app/Contents/MacOS/会话桥', 'app/repair-runtime.sh', 'install.sh')
 
 
@@ -72,6 +75,13 @@ class Updater:
 
     def git_path(self):
         if self.git:
+            return self.git
+        if WINDOWS:
+            # Git for Windows 默认装在 Program Files；也认 PATH 里的 git
+            for candidate in WINDOWS_GIT_CANDIDATES + (shutil.which('git') or '',):
+                if candidate and os.path.isfile(candidate):
+                    self.git = candidate
+                    return candidate
             return self.git
         for candidate in GIT_CANDIDATES:
             if os.access(candidate, os.X_OK):
@@ -242,11 +252,9 @@ class Updater:
         path = Path(self.env.BRIDGE) / 'operation.lock'
         path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        if not bridge_state.lock_fd(fd, blocking=False):
             os.close(fd)
-            raise UpdateError('灵桥正在做别的操作（同步、删除、清理或导入），等它做完再更新') from None
+            raise UpdateError('灵桥正在做别的操作（同步、删除、清理或导入），等它做完再更新')
         return fd
 
     def apply(self, body):
@@ -305,6 +313,8 @@ class Updater:
         """跑测试：灵桥自己的一套，加上每个带 tests/ 的插件的一套。全过才算更新成功。"""
         env = {k: v for k, v in os.environ.items() if k not in ('PYTHONPATH', 'PYTHONHOME', 'PYTHONSTARTUP')}
         env.update(PYTHONDONTWRITEBYTECODE='1', PYTHONIOENCODING='utf-8', LINGQIAO_CORE=str(self.env.REPO))
+        if WINDOWS:
+            env['PYTHONUTF8'] = '1'   # Windows 默认按 GBK 读文件，测试和灵桥一样用 UTF-8
         suites = [Path(self.env.REPO)] + [r['path'] for r in repos if r['kind'] == 'plugin' and (r['path'] / 'tests').is_dir()]
         for folder in suites:
             try:
@@ -327,9 +337,13 @@ class Updater:
                 if repo['kind'] == 'core':
                     self._fix_modes(repo['path'])
             if any(repo['kind'] == 'core' and self._changed(repo, before, REQUIREMENTS) for repo, before in updated):
-                job['step'] = '依赖清单变了，正在补装（要联网，可能要几分钟）…'
-                job['repaired'] = True
-                self._repair()
+                if WINDOWS:
+                    # Windows 上正在用的依赖文件换不掉：等重启时旧灵桥退出了再补装
+                    job['repair_on_restart'] = True
+                else:
+                    job['step'] = '依赖清单变了，正在补装（要联网，可能要几分钟）…'
+                    job['repaired'] = True
+                    self._repair()
             job['step'] = '正在跑测试，确认新版本在这台电脑上没问题…'
             ok, tail = self._tests(self.repos())
             if not ok:
@@ -345,7 +359,7 @@ class Updater:
             self.env.log('update-failed type=' + type(exc).__name__)
         finally:
             try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
+                bridge_state.unlock_fd(fd)
             finally:
                 os.close(fd)
             self._save_run(job)
@@ -385,11 +399,18 @@ class Updater:
         with self.lock:
             if self.job is None or self.job.get('status') != 'done' or not self.job.get('restart'):
                 raise UpdateError('没有等着重启的更新')
-        app = Path(self.env.REPO) / '会话桥.app'
         # 等这个进程退出后再打开灵桥：新开的那个才会用上新代码。
-        script = 'while kill -0 "$1" 2>/dev/null; do sleep 0.3; done; sleep 0.5; exec /usr/bin/open "$2"'
-        subprocess.Popen(['/bin/sh', '-c', script, 'lingqiao-restart', str(os.getpid()), str(app)], start_new_session=True,
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+        if WINDOWS:
+            subprocess.Popen([self.python, '-X', 'utf8', str(Path(self.env.REPO) / 'app' / 'windows_setup.py'),
+                              '--restart-after', str(os.getpid())] + (['--repair'] if self.job.get('repair_on_restart') else []),
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, close_fds=True,
+                             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
+        else:
+            app = Path(self.env.REPO) / '会话桥.app'
+            script = 'while kill -0 "$1" 2>/dev/null; do sleep 0.3; done; sleep 0.5; exec /usr/bin/open "$2"'
+            subprocess.Popen(['/bin/sh', '-c', script, 'lingqiao-restart', str(os.getpid()), str(app)], start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
         threading.Timer(0.5, self.env.request_shutdown).start()
         return {'ok': True}
 

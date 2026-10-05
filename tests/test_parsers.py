@@ -79,7 +79,8 @@ class ParserTests(unittest.TestCase):
             self.assertEqual(meta["permissionMode"], "default")
             self.assertNotIn("model", meta)
             self.assertNotIn("effort", meta)
-            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
     def test_known_machine_tag_in_literal_code_survives(self):
         for text in ("请检查这段代码：\n```xml\n<system-reminder>literal</system-reminder>\n```", "请解释 `<environment_context>x</environment_context>`"):

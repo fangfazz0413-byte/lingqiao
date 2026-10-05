@@ -4,7 +4,6 @@ Use one operation.lock per bridge repository for mutations. Lab databases have
 independent state directories and cannot modify the real database's ledger.
 """
 from contextlib import contextmanager
-import fcntl
 import hashlib
 import json
 import os
@@ -13,8 +12,44 @@ import tempfile
 import threading
 import time
 
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
+
 _registry_guard = threading.Lock()
 _locks = {}
+
+
+def lock_fd(fd, blocking=True):
+    """Exclusive lock on an open file; False when non-blocking and someone else holds it.
+
+    macOS uses flock.  Windows has no flock, so lock the first byte with
+    msvcrt (allowed past EOF) and poll, because LK_LOCK gives up after 10 s.
+    """
+    if os.name != "nt":
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        except BlockingIOError:
+            return False
+        return True
+    while True:
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            if not blocking:
+                return False
+            time.sleep(0.05)
+
+
+def unlock_fd(fd):
+    if os.name != "nt":
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    else:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
 
 
 class _LockState:
@@ -36,7 +71,7 @@ def file_lock(path):
             fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
             try:
                 os.fchmod(fd, 0o600)
-                fcntl.flock(fd, fcntl.LOCK_EX)
+                lock_fd(fd)
             except BaseException:
                 os.close(fd)
                 raise
@@ -47,7 +82,7 @@ def file_lock(path):
         finally:
             state.depth -= 1
             if state.depth == 0:
-                fcntl.flock(state.fd, fcntl.LOCK_UN)
+                unlock_fd(state.fd)
                 os.close(state.fd)
                 state.fd = None
 
@@ -80,16 +115,28 @@ def atomic_json(path, obj):
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        replace(temporary, path)
         os.chmod(path, 0o600)
-        directory_fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        if os.name != "nt":  # Windows 打不开文件夹做 fsync；NTFS 的改名本身有日志
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def replace(source, target):
+    """os.replace; on Windows retry briefly while another reader still has the target open."""
+    for attempt in range(20 if os.name == "nt" else 1):
+        try:
+            return os.replace(source, target)
+        except PermissionError:
+            if os.name != "nt" or attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def database_identity(db_path):

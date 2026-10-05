@@ -1,0 +1,3 @@
+# Windows 的 cmd 要 CRLF 换行；shell 脚本保持 LF
+*.bat text eol=crlf
+*.sh text eol=lf

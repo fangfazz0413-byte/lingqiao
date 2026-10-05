@@ -78,7 +78,9 @@
     const status = S.status;
     let body;
     if (!status) body = `<div class="loading">${S.busy ? "正在连 GitHub 看有没有新版本…" : "正在读取…"}</div>`;
-    else if (!status.git) body = `<div class="upd-note warn">这台 Mac 没装 git，没法自动更新。装好 Xcode 命令行工具（终端里运行 xcode-select --install）后再试。</div>`;
+    else if (!status.git) body = `<div class="upd-note warn">${/Windows/.test(navigator.userAgent || "")
+      ? "这台电脑没装 git，没法自动更新。装好 Git for Windows（git-scm.com）后再试。"
+      : "这台 Mac 没装 git，没法自动更新。装好 Xcode 命令行工具（终端里运行 xcode-select --install）后再试。"}</div>`;
     else body = status.repos.map(repoHtml).join("") +
       `<div class="upd-note">上次检查：${esc(fmtTime(status.checked_at))}${status.auto_check ? " · 每天自动看一次" : " · 自动检查已关"}。会话、设置这些数据不会被更新动到。</div>`;
     const ask = S.asking ? `<div class="m-warn">更新时会先跑一遍测试（大约一分钟），没通过就自动退回原来的版本。确定现在更新？</div>` : "";

@@ -4,6 +4,11 @@
    或灵桥列出的候选文件，页面不传文件路径。 */
 (function () {
   "use strict";
+  // Windows 上没有 ⌘Q：Claude 桌面版关掉窗口只是缩到托盘，要在托盘图标上右键退出。
+  const ON_WINDOWS = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent || "");
+  const QUIT = ON_WINDOWS ? "在右下角托盘里右键 Claude 图标、选「退出」" : "在桌面版里按 ⌘Q 完全退出";
+  const QUIT_DONE = ON_WINDOWS ? "我已经在托盘里把 Claude 桌面版退出了" : "我已经在 Claude 桌面版里按 ⌘Q 完全退出了";
+  const REVEAL = ON_WINDOWS ? "在资源管理器中显示" : "在访达中显示";
   const TOOLS = ["claude", "codex", "zcode", "workbuddy"];
   const TOOL_NAMES = { claude: "Claude Code", codex: "Codex", zcode: "ZCode", workbuddy: "WorkBuddy" };
   const S = {
@@ -101,7 +106,7 @@
     if (needsClaudeQuit(state.plan, state.choices)) {
       const claude = state.claude || state.plan.claude;
       if (claude?.running === null || claude?.running === undefined) return "没法确认 Claude 桌面版有没有退出";
-      if (claude.running) return "要往 Claude 桌面版侧栏加条目：先在桌面版里按 ⌘Q 完全退出";
+      if (claude.running) return `要往 Claude 桌面版侧栏加条目：先${QUIT}`;
     }
     return "";
   }
@@ -222,7 +227,7 @@
     const picked = chosenItems(S.plan, S.choices);
     const raw = picked.filter(item => S.choices.get(item.id).mode === "raw").length;
     const quit = needsClaudeQuit(S.plan, S.choices);
-    const ok = await ask({ title: `导入 ${picked.length} 条会话？`, ok: "开始导入", check: quit ? "我已经在 Claude 桌面版里按 ⌘Q 完全退出了" : "",
+    const ok = await ask({ title: `导入 ${picked.length} 条会话？`, ok: "开始导入", check: quit ? QUIT_DONE : "",
       body: `原样导入 <b>${raw}</b> 条，转成文字导入 <b>${picked.length - raw}</b> 条。<br>只新建，不覆盖这台电脑上已有的会话；每条都记了恢复日志，出错会自动撤回。<br>做完可以「撤销这次导入」（导入的会话进回收站）。` });
     if (!ok) return null;
     S.busy = true; render();
@@ -237,7 +242,7 @@
     const call = deps.api || api, ask = deps.confirm || confirmDialog;
     const run = (S.runs || []).find(r => r.id === runId) || (S.importResult?.id === runId ? S.importResult : null);
     const claude = (run?.items || []).some(i => i.status === "imported" && i.local_tool === "claude");
-    const ok = await ask({ title: "撤销这次导入？", ok: "撤销", check: claude ? "我已经在 Claude 桌面版里按 ⌘Q 完全退出了" : "",
+    const ok = await ask({ title: "撤销这次导入？", ok: "撤销", check: claude ? QUIT_DONE : "",
       body: "这次导入进来的会话会移进<b>回收站</b>（可以从回收站恢复）；Claude 会话文件夹里带过来的工具输出等文件挪到灵桥的撤销区。<br>导入之后又被改过的会保留不动，结果里会列出来。" });
     if (!ok) return null;
     S.busy = true; render();
@@ -282,7 +287,7 @@
       ${run.secrets ? `<div class="tf-warn-text">里面有 ${run.secrets} 处像密钥的内容（在 ${run.secret_sessions} 条会话里）。这个压缩包只在自己的电脑之间传，别发给别人。</div>` : ""}
       ${run.skipped?.length ? `<details><summary>没导出的 ${run.skipped.length} 条</summary><ul class="tf-list">${run.skipped.map(x => `<li>${esc(TOOL_NAMES[x.tool] || x.tool)} · ${esc(x.title)}<span class="tf-dim"> · ${esc(x.reason)}</span></li>`).join("")}</ul></details>` : ""}
       <div class="tf-line">下一步：把这个文件拿到另一台电脑（隔空投送、U 盘、SSD 都行），在那台灵桥的会话列表上点「导入会话」选它。</div>
-      <div class="tf-actions"><button class="btn tf-primary" data-act="reveal" data-run="${esc(run.id)}">在访达中显示</button><button class="btn" data-act="close">好</button></div></div>`;
+      <div class="tf-actions"><button class="btn tf-primary" data-act="reveal" data-run="${esc(run.id)}">${REVEAL}</button><button class="btn" data-act="close">好</button></div></div>`;
   }
   function exportView() {
     const items = S.exportItems || [];
@@ -330,7 +335,7 @@
     if (!S.plan || !needsClaudeQuit(S.plan, S.choices)) return "";
     const claude = S.claude || S.plan.claude;
     if (claude?.running === false) return '<div class="tf-banner ok"><span class="tf-dot"></span>Claude 桌面版已经退出，可以往它的侧栏里加条目了。</div>';
-    if (claude?.running) return `<div class="tf-banner bad"><span class="tf-dot"></span>有会话要放进 Claude 桌面版侧栏：先在桌面版里按 ⌘Q 完全退出（它开着会把新条目覆盖掉）。在桌面版里跑着的 AI 对话也会一起停。</div>`;
+    if (claude?.running) return `<div class="tf-banner bad"><span class="tf-dot"></span>有会话要放进 Claude 桌面版侧栏：先${QUIT}（它开着会把新条目覆盖掉）。在桌面版里跑着的 AI 对话也会一起停。</div>`;
     return `<div class="tf-banner warn"><span class="tf-dot"></span>没法确认 Claude 桌面版有没有退出${claude?.error ? "（" + esc(claude.error) + "）" : ""}，先不能写它的侧栏。</div>`;
   }
   function importResultCard(run) {
@@ -353,7 +358,7 @@
     if (!S.runs.length) return '<div class="tf-dim">还没有导出或导入过。</div>';
     return `<div class="tf-runs">${S.runs.map(r => r.kind === "export"
       ? `<div class="tf-run"><span class="tf-chip none">导出</span><span class="tf-run-at">${esc(r.at)}</span><span class="tf-title"><b>${esc(r.name)}</b><span class="tf-dir">${r.sessions} 条 · ${esc(fmtBytes(r.size))}${r.secrets ? ` · 像密钥的 ${r.secrets} 处` : ""}</span></span>
-         <span>${r.exists ? `<button class="btn tf-mini" data-act="reveal" data-run="${esc(r.id)}">在访达中显示</button>` : '<span class="tf-dim">文件已挪走</span>'}</span></div>`
+         <span>${r.exists ? `<button class="btn tf-mini" data-act="reveal" data-run="${esc(r.id)}">${REVEAL}</button>` : '<span class="tf-dim">文件已挪走</span>'}</span></div>`
       : `<div class="tf-run"><span class="tf-chip run">导入</span><span class="tf-run-at">${esc(r.at)}</span><span class="tf-title"><b>${esc(r.zip)}</b><span class="tf-dir">来自 ${esc(r.source?.machine || "")} · 进来 ${r.counts?.imported || 0} 条（原样 ${r.counts?.raw || 0}、转文字 ${r.counts?.text || 0}）${r.counts?.failed ? ` · 没成 ${r.counts.failed}` : ""}</span></span>
          <span>${r.undone ? '<span class="tf-chip none">已撤销</span>' : r.counts?.imported ? `<button class="btn tf-mini" data-act="undo" data-run="${esc(r.id)}">撤销</button>` : ""}</span></div>`).join("")}</div>`;
   }

@@ -16,7 +16,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: var(--bg); color: var(--text);
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", "Segoe UI", "Microsoft YaHei UI", sans-serif;
     height: 100vh; display: flex; overflow: hidden;
   }
   /* ===== 左侧导航 ===== */
@@ -488,10 +488,10 @@
   :root[data-theme="mint"] { --bg:#0d1514; --bg2:#101d1b; --card:#14221f; --card2:#1d332d; --border:#29443b; --border2:#41685a; --text:#f0fbf4; --text2:#a2c0b1; --text3:#759588; --red:#73d6a6; --accent:#91dfc0; --green:#73d6a6; --orange:#f0c46e; --accent-soft:rgba(115,214,166,.14); }
   :root[data-theme="lavender"] { --bg:#12101a; --bg2:#191522; --card:#211b2d; --card2:#30273f; --border:#413653; --border2:#604d77; --text:#faf7ff; --text2:#b6a9c7; --text3:#887b9b; --red:#c49aff; --accent:#9db8ff; --green:#72ddba; --orange:#f3c978; --accent-soft:rgba(196,154,255,.15); }
   :root[data-theme="cream"] { color-scheme:light; --bg:#f5f7fb; --bg2:#edf1f7; --card:#ffffff; --card2:#f0f3f8; --border:#dce3ed; --border2:#c4cfdd; --text:#202631; --text2:#647083; --text3:#8a95a5; --red:#df637d; --accent:#6489dc; --green:#269b70; --orange:#bd7e24; --accent-soft:rgba(223,99,125,.12); }
-  :root[data-font="round"] body { font-family:"Yuanti SC","Arial Rounded MT Bold",-apple-system,sans-serif; }
-  :root[data-font="modern"] body { font-family:"Avenir Next","PingFang SC","Hiragino Sans GB",sans-serif; }
-  :root[data-font="hand"] body { font-family:"Kaiti SC","STKaiti","Noteworthy",serif; }
-  :root[data-font="system"] body { font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif; }
+  :root[data-font="round"] body { font-family:"Yuanti SC","Arial Rounded MT Bold",-apple-system,"YouYuan","Microsoft YaHei UI",sans-serif; }
+  :root[data-font="modern"] body { font-family:"Avenir Next","PingFang SC","Hiragino Sans GB","Segoe UI Variable","DengXian",sans-serif; }
+  :root[data-font="hand"] body { font-family:"Kaiti SC","STKaiti","Noteworthy","KaiTi",serif; }
+  :root[data-font="system"] body { font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue","Segoe UI","Microsoft YaHei UI",sans-serif; }
   .brand-word { font-size:22px; letter-spacing:-.8px; }
   .appearance-btn { color:var(--red); border-color:var(--red); }
   .appearance-btn:hover { background:var(--accent-soft); }
@@ -671,7 +671,7 @@
   <div class="modal">
     <h3 id="usage-settings-title">额度来源设置</h3>
     <div class="usage-settings-form" id="usage-provider-form"><div class="loading">正在读取配置状态…</div></div>
-    <div class="usage-settings-note">密钥只保存到本机钥匙串，不会写入会话桥缓存、日志或接口响应。留空表示保持当前配置。</div>
+    <div class="usage-settings-note">密钥只保存到本机钥匙串（Windows 上是凭据管理器），不会写入会话桥缓存、日志或接口响应。留空表示保持当前配置。</div>
     <div class="m-actions"><button class="btn" id="usage-settings-cancel">取消</button><button class="btn" id="usage-settings-save">保存并刷新</button></div>
   </div>
 </div>

@@ -37,8 +37,10 @@ class UsageMigrationTests(unittest.TestCase):
             out = usage_collector.snapshot(force=True, cache_file=str(self.cache))
         self.assertEqual(out['local']['month'], '2026-10')
         self.assertTrue(self.cache.is_file())
-        self.assertEqual(self.cache.stat().st_mode & 0o777, 0o600)
-        self.assertEqual(self.cache.parent.stat().st_mode & 0o777, 0o700)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(self.cache.stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(self.cache.parent.stat().st_mode & 0o777, 0o700)
 
     def test_backend_refresh_never_invokes_cli(self):
         with patch('usage_backend.snapshot', return_value=self.payload()) as collect:
@@ -53,7 +55,8 @@ class UsageMigrationTests(unittest.TestCase):
         self.assertTrue(result['migrated'])
         self.assertTrue(legacy.exists())
         self.assertEqual(usage_backend.read_snapshot(self.cache)['local']['month'], '2026-10')
-        self.assertEqual(self.cache.stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(self.cache.stat().st_mode & 0o777, 0o600)
 
     def test_backend_reads_only_valid_schema(self):
         self.cache.parent.mkdir(parents=True)

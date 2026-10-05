@@ -136,7 +136,8 @@ class SubagentCleanupTests(unittest.TestCase):
                 bulk.set_auto(s, enabled, days)
         settings = bulk.set_auto(s, True, 30)
         self.assertEqual((settings['enabled'], settings['days']), (True, 30))
-        self.assertEqual((s.BRIDGE / bulk.AUTO_FILE).stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual((s.BRIDGE / bulk.AUTO_FILE).stat().st_mode & 0o777, 0o600)
         now = time.time()
         result = bulk.auto_tick(s, now)
         self.assertEqual(result['deleted'], 3); self.assertFalse(self.child_claude.exists())

@@ -16,12 +16,37 @@ jobs:
       # 灵桥在 Windows 上以 UTF-8 模式运行（启动器会打开），测试也一样
       PYTHONUTF8: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - name: 跑测试
         run: python -B -m unittest discover -s tests
+
+      - name: Windows：安装并打开灵桥
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -X utf8 app\windows_setup.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $home2 = Join-Path $env:RUNNER_TEMP 'home'
+          New-Item -ItemType Directory -Force $home2 | Out-Null
+          $env:BRIDGE_HOME = $home2
+          $p = Start-Process -FilePath .bridge\runtime\Scripts\python.exe -ArgumentList '-X', 'utf8', 'app\server.py' -PassThru `
+                 -RedirectStandardOutput $env:RUNNER_TEMP\out.txt -RedirectStandardError $env:RUNNER_TEMP\err.txt
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $p.HasExited; $i++) {
+            Start-Sleep 1
+            try { if ((Invoke-RestMethod http://127.0.0.1:8791/api/health).product -eq 'session-bridge') { $ok = $true; break } } catch {}
+          }
+          Start-Sleep 10
+          $alive = -not $p.HasExited
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Get-Content $env:RUNNER_TEMP\out.txt, $env:RUNNER_TEMP\err.txt, app\server.log -ErrorAction SilentlyContinue
+          Get-ChildItem *.lnk, (Join-Path ([Environment]::GetFolderPath('Desktop')) '*.lnk') -ErrorAction SilentlyContinue
+          if (-not $ok) { Write-Error '灵桥没起来'; exit 1 }
+          if (-not $alive) { Write-Error '灵桥起来后又退出了'; exit 1 }
+          Write-Output '灵桥在 Windows 上起来了，窗口开着'

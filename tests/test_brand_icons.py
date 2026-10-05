@@ -69,7 +69,8 @@ class ExtractTests(unittest.TestCase):
         out = subprocess.run(['/usr/bin/sips', '-g', 'pixelWidth', '-g', 'pixelHeight', str(self.icons / 'zcode.png')],
                              capture_output=True, text=True, check=True).stdout
         self.assertIn('pixelWidth: 64', out); self.assertIn('pixelHeight: 64', out)
-        self.assertEqual(oct(os.stat(self.icons / 'zcode.png').st_mode & 0o777), '0o644')
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(oct(os.stat(self.icons / 'zcode.png').st_mode & 0o777), '0o644')
         self.assertEqual([p.name for p in self.icons.iterdir() if p.name.startswith('.')], [])   # 不留临时文件
         again = brand_icons.ensure(self.icons, home=self.base, spotlight=False)
         self.assertEqual(again['zcode'], 'exists')

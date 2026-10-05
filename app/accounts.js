@@ -2,6 +2,10 @@
    点开左侧 Claude Code 下面的「双账号会话」时才加载；接口都带 X-Bridge-Token 头，token 不进 URL。 */
 (function () {
   "use strict";
+  // Windows 上没有 ⌘Q：Claude 桌面版关掉窗口只是缩到托盘，要在托盘图标上右键退出。
+  const ON_WINDOWS = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent || "");
+  const QUIT = ON_WINDOWS ? "在右下角托盘里右键 Claude 图标、选「退出」" : "在桌面版里按 ⌘Q 完全退出";
+  const QUIT_DONE = ON_WINDOWS ? "我已经在托盘里把 Claude 桌面版退出了" : "我已经在 Claude 桌面版里按 ⌘Q 完全退出了";
   const WINDOW_TEXT = { 3: "最近 3 小时", 5: "最近 5 小时", 24: "最近 24 小时", 48: "最近 2 天", 168: "最近 7 天", 0: "不限时间" };
   const S = { host: null, visible: false, status: null, preview: null, previewKey: "", busy: false, timer: null, lastRun: null,
     form: null, modal: null, error: "" };
@@ -59,7 +63,7 @@
     if (state.preview.nothing) return "两边已经一致，不用同步";
     const claude = state.status?.claude;
     if (claude?.running === null || claude?.running === undefined) return "没法确认 Claude 桌面版有没有退出";
-    if (claude.running) return "Claude 桌面版还开着：先在桌面版里按 ⌘Q 完全退出";
+    if (claude.running) return `Claude 桌面版还开着：先${QUIT}`;
     return "";
   }
   function totals(plans) {
@@ -70,7 +74,7 @@
   }
   function claudeText(claude) {
     if (!claude || claude.running === null || claude.running === undefined) return { cls: "warn", text: `没法确认 Claude 桌面版有没有退出${claude?.error ? "（" + claude.error + "）" : ""}，先不能同步。预览不受影响。` };
-    if (claude.running) return { cls: "bad", text: `Claude 桌面版还开着（${claude.count || claude.blocking?.length || 1} 个进程）。同步前先在桌面版里按 ⌘Q 完全退出——在桌面版里跑着的 AI 对话也会一起停。预览不受影响。` };
+    if (claude.running) return { cls: "bad", text: `Claude 桌面版还开着（${claude.count || claude.blocking?.length || 1} 个进程）。同步前先${QUIT}——在桌面版里跑着的 AI 对话也会一起停。预览不受影响。` };
     return { cls: "ok", text: "Claude 桌面版已经退出，可以同步。" };
   }
 
@@ -115,7 +119,7 @@
     if (!canSync(S)) { notify(syncBlockReason(S) || "现在不能同步", false); return null; }
     const plans = S.preview.plans || [], sum = totals(plans), backup = S.preview.backup || S.status?.backup || {};
     const lines = plans.map(p => `· ${esc(p.source_label)} → <b>${esc(p.target_label)}</b>：复制 <b>${p.counts.copy}</b> 条，刷新标题 <b>${p.counts.update}</b> 个`).join("<br>");
-    const ok = await ask({ title: "先备份，再同步？", ok: "备份并同步", check: "我已经在 Claude 桌面版里按 ⌘Q 完全退出了",
+    const ok = await ask({ title: "先备份，再同步？", ok: "备份并同步", check: QUIT_DONE,
       body: `会先把整个 <code>claude-code-sessions</code> 备份到<br><code>${esc(backup.dir || "")}</code>${backup.fallback ? "（设置的备份目录现在不在，先放在灵桥本地）" : ""}，逐个文件核对；然后：<br>${lines}<br>只复制侧栏条目，聊天记录本身不动；目标账号删过的会话不会复活。做完可以在「同步记录」里撤销。` });
     if (!ok) return null;
     S.busy = true; render();
@@ -132,7 +136,7 @@
   }
   async function requestUndo(runId, deps = {}) {
     const call = deps.api || api, ask = deps.confirm || confirmDialog;
-    const ok = await ask({ title: "撤销这次同步？", ok: "撤销", check: "我已经在 Claude 桌面版里按 ⌘Q 完全退出了",
+    const ok = await ask({ title: "撤销这次同步？", ok: "撤销", check: QUIT_DONE,
       body: "会先再备份一次，然后把这次复制进去、之后<b>没被桌面版动过</b>的会话条目挪到灵桥的撤销区（不删除），刷新过的标题改回原样。<br>桌面版里打开过的条目会保留不动，结果里会列出来。" });
     if (!ok) return null;
     S.busy = true; render();

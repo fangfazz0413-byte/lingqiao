@@ -14,6 +14,7 @@ from typing import Any
 import tempfile
 import math
 
+import platform_paths
 from usage_collector import provider_status, save_provider_keys, snapshot
 
 _lock = threading.Lock()
@@ -23,7 +24,7 @@ _REQUIRED_LOCAL_LISTS = ("days", "daily", "months", "sources")
 def _default_cache() -> Path:
     return Path(os.environ.get(
         "LINGQIAO_USAGE_CACHE",
-        Path.home() / "Library/Application Support/LingqiaoUsage/cache.json",
+        platform_paths.app_support(Path.home()) / "LingqiaoUsage/cache.json",
     )).expanduser().resolve()
 
 

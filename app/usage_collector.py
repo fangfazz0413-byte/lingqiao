@@ -21,6 +21,8 @@ import time
 import urllib.error
 import urllib.request
 
+import platform_paths
+
 KEYCHAIN_PREFIX = "aiquota-"
 HOME = os.path.expanduser("~")
 TIMEOUT = 12
@@ -66,14 +68,35 @@ def _security():
     return Security
 
 
-def _key_query(api, name):
+def _target(name):
     if name not in PROVIDERS:
         raise ValueError("未知额度来源")
+    return KEYCHAIN_PREFIX + name
+
+
+def _key_query(api, name):
     return {api.kSecClass: api.kSecClassGenericPassword,
-            api.kSecAttrService: KEYCHAIN_PREFIX + name}
+            api.kSecAttrService: _target(name)}
+
+
+# Windows 上同样的三件事交给凭据管理器（wincred.py），名字沿用 aiquota-<来源>。
+def _wincred_read(name):
+    import wincred
+    try:
+        return wincred.read(_target(name))
+    except OSError as exc:
+        raise RuntimeError("凭据管理器读取失败") from exc
 
 
 def kc_get(name):
+    if platform_paths.WINDOWS:
+        raw = _wincred_read(name)
+        if raw is None:
+            return None
+        try:
+            return raw.decode("utf-8").strip() or None
+        except UnicodeError as exc:
+            raise RuntimeError("凭据管理器内容格式无效") from exc
     api = _security()
     query = {**_key_query(api, name), api.kSecReturnData: True,
              api.kSecMatchLimit: api.kSecMatchLimitOne,
@@ -91,6 +114,8 @@ def kc_get(name):
 
 def kc_configured(name):
     """Check item attributes without retrieving key bytes."""
+    if platform_paths.WINDOWS:
+        return _wincred_read(name) is not None
     api = _security()
     status, unused = api.SecItemCopyMatching(
         {**_key_query(api, name), api.kSecReturnAttributes: True,
@@ -104,6 +129,13 @@ def kc_configured(name):
 
 
 def kc_set(name, value):
+    if platform_paths.WINDOWS:
+        import wincred
+        try:
+            wincred.write(_target(name), getpass.getuser(), value.encode("utf-8"))
+        except OSError:
+            return False, "凭据管理器保存失败"
+        return True, ""
     api = _security()
     query = _key_query(api, name)
     raw = value.encode("utf-8")
@@ -780,7 +812,7 @@ def all_quota():
 
 # 私有磁盘缓存：采集结果在重启后继续可用，额度与本机用量独立计时。
 USAGE_DIR = os.path.abspath(os.environ.get(
-    "LINGQIAO_USAGE_DIR", os.path.expanduser("~/Library/Application Support/LingqiaoUsage")))
+    "LINGQIAO_USAGE_DIR", str(platform_paths.app_support(Path.home()) / "LingqiaoUsage")))
 CACHE_DIR = USAGE_DIR
 CACHE_FILE = os.path.join(CACHE_DIR, "cache.json")
 

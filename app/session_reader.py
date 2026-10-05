@@ -5,6 +5,8 @@ import sqlite3
 import time
 from pathlib import Path
 
+import platform_paths
+
 def records(path):
     """Never hide corrupt records as an apparently complete conversation."""
     with Path(path).open(encoding='utf-8') as stream:
@@ -33,7 +35,7 @@ def connect(path):
 
 def title_maps(env):
     cc, cx = {}, {}
-    root = env.HOME / 'Library/Application Support/Claude/claude-code-sessions'
+    root = platform_paths.claude_meta_root(env.HOME)
     for p in root.rglob('local_*.json') if root.exists() else []:
         try:
             d = json.loads(p.read_text()); cc[d.get('cliSessionId')] = d.get('title') or ''

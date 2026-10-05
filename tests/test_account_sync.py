@@ -227,7 +227,7 @@ class SyncTests(AccountCase):
         for processes, message in [([(99, MAIN)], '还开着'), ([(98, HELPER)], '还开着')]:
             self.box.processes = list(HARMLESS) + processes
             with self.subTest(processes=processes):
-                with self.assertRaisesRegex(ValueError, '⌘Q'):
+                with self.assertRaisesRegex(ValueError, '⌘Q|托盘'):
                     self.run_sync()
         self.sync.process_lister = mock.Mock(side_effect=OSError('ps 坏了'))
         with self.assertRaisesRegex(ValueError, '没法确认'):
@@ -248,13 +248,15 @@ class SyncTests(AccountCase):
         run = result['run']
         self.assertEqual(run['totals'], {'copied': 1, 'updated': 1, 'failed': 0})
         copied = self.box.meta / B / ORG_B / self.box.s1.name
-        self.assertEqual(copied.stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(copied.stat().st_mode & 0o777, 0o600)
         original, copy = json.loads(self.box.s1.read_text()), json.loads(copied.read_text())
         self.assertEqual(copy['bridgeSessionIds'], []); self.assertIs(copy['remoteControlAutoEligible'], False)
         for key in ('sessionId', 'cliSessionId', 'title', 'cwd', 'model', 'spawnSeed', 'lastActivityAt'):
             self.assertEqual(copy[key], original[key])
         self.assertEqual(json.loads(self.box.b2.read_text())['title'], '标题在 A 更新过')
-        self.assertEqual(self.box.b2.stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(self.box.b2.stat().st_mode & 0o777, 0o600)
         after = tree_digest(self.box.meta)
         changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
         self.assertEqual(changed, {f'{B}/{ORG_B}/{self.box.s1.name}', f'{B}/{ORG_B}/{self.box.b2.name}'})
@@ -268,8 +270,10 @@ class SyncTests(AccountCase):
         self.assertEqual(run['backup']['files'], len(before)); self.assertTrue(run['backup']['verified'])
         self.assertEqual(json.loads((folder / '灵桥同步记录.json').read_text())['id'], run['id'])
         record = self.box.bridge / 'account-sync' / 'runs' / f"{run['id']}.json"
-        self.assertEqual(record.stat().st_mode & 0o777, 0o600)
-        self.assertEqual((self.box.bridge / 'account-sync').stat().st_mode & 0o777, 0o700)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(record.stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual((self.box.bridge / 'account-sync').stat().st_mode & 0o777, 0o700)
         self.assertTrue(any(line.startswith('account-sync run=') for line in self.box.logs))
         self.assertFalse(any('只在 A' in line for line in self.box.logs))  # 日志不写标题
         self.box.env.invalidate.assert_called()
@@ -370,7 +374,7 @@ class UndoTests(AccountCase):
         detail = self.sync.handle_get('/api/accounts/run', {'id': [runs[0]['id']]})['run']
         self.assertEqual(detail['results'][0]['copied'][0]['title'], '新会话：只在 A')
         self.assertEqual(self.sync.handle_post('/api/accounts/open-claude', {}), {'ok': True})
-        self.assertEqual(self.box.opened, [['/usr/bin/open', '-b', 'com.anthropic.claudefordesktop']])
+        self.assertEqual(self.box.opened, [asy.OPEN_CLAUDE])
         self.assertEqual(self.sync.handle_get('/api/accounts/claude', {})['running'], False)
         with self.assertRaises(FileNotFoundError):
             self.sync.handle_get('/api/accounts/nope', {})
@@ -423,7 +427,7 @@ class AccountHttpTests(unittest.TestCase):
         self.assertEqual(status, 200); self.assertEqual(json.loads(raw)['plans'][0]['counts']['copy'], 1)
         self.box.processes.append((99, MAIN))
         status, raw = self.request('/api/accounts/sync', {**auth, **json_headers}, 'POST', {'source': A, 'target': B, 'window_hours': 24, 'confirm': True})
-        self.assertEqual(status, 400); self.assertIn('⌘Q', json.loads(raw)['error'])
+        self.assertEqual(status, 400); self.assertRegex(json.loads(raw)['error'], '⌘Q|托盘')
         status, raw = self.request('/static/accounts.js', auth)
         self.assertEqual(raw, (ROOT / 'app' / 'accounts.js').read_bytes())
 

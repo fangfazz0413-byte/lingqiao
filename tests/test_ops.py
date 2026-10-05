@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 import tempfile
@@ -124,7 +125,8 @@ class Operations(unittest.TestCase):
             self.assertEqual(c.execute('SELECT body FROM assets').fetchone()[0], b'private\x00')
             self.assertEqual(c.execute('SELECT COUNT(*) FROM asset_tags').fetchone()[0],1)
         with dbconn(self.env.CX_SQLITE) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM thread_realtime_items').fetchone()[0],1)
-        self.assertEqual(Path(result['trash']).joinpath('journal.json').stat().st_mode&0o777,0o600)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(Path(result['trash']).joinpath('journal.json').stat().st_mode&0o777,0o600)
 
     def test_delete_failure_restores_files_and_rows(self):
         source=self.source('workbuddy'); sid=Path(source).stem

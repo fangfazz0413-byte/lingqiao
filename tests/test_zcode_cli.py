@@ -161,7 +161,8 @@ class ZCodeTests(unittest.TestCase):
             thread.join(timeout=5)
             self.assertFalse(thread.is_alive())
         self.assertEqual(bs.load_json(path, {})["count"], 30)
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':  # Windows 没有这种权限位，靠用户目录的访问控制
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         path.write_text("{bad")
         with self.assertRaisesRegex(ValueError, "Invalid bridge state"):
             bs.load_json(path, {})

@@ -30,6 +30,7 @@ import zipfile
 
 import bridge_ops
 import bridge_state
+import platform_paths
 
 FORMAT = 'lingqiao-session-transfer'
 FORMAT_VERSION = 1
@@ -226,7 +227,7 @@ class SessionTransfer:
         if status.get('running') is None:
             raise ValueError('没法确认 Claude 桌面版有没有退出（' + str(status.get('error') or '') + '），这次先不写 Claude 的侧栏条目')
         if status['running']:
-            raise ValueError('要往 Claude 桌面版侧栏里加条目：先在桌面版里按 ⌘Q 完全退出，再回来导入')
+            raise ValueError(f'要往 Claude 桌面版侧栏里加条目：先{platform_paths.QUIT_CLAUDE}，再回来导入')
 
     def _attention(self):
         if getattr(self.env, '_attention', None):
@@ -531,7 +532,7 @@ class SessionTransfer:
         return entry
 
     def _sidebar_for(self, sid):
-        root = Path(getattr(self.env, 'CC_META_ROOT', Path(self.env.HOME) / 'Library/Application Support/Claude/claude-code-sessions'))
+        root = Path(getattr(self.env, 'CC_META_ROOT', platform_paths.claude_meta_root(self.env.HOME)))
         best, best_ts = None, -1
         if not root.is_dir():
             return None
@@ -1356,7 +1357,7 @@ class SessionTransfer:
         run = self.load_run(body.get('run_id'))
         if run.get('kind') != 'export' or not Path(run.get('path', '')).is_file():
             raise ValueError('找不到这个压缩包了（可能被挪走了）')
-        subprocess.run(['/usr/bin/open', '-R', run['path']], check=False, timeout=10)
+        platform_paths.reveal(run['path'])
         return {'ok': True}
 
     # ------------------------------------------------------------ 接口

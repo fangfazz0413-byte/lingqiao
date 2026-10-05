@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import bridge_state as state
+import platform_paths
 
 TOOLS = {"claude", "codex", "zcode", "workbuddy"}
 PROVENANCE = "provenance.json"
@@ -340,7 +341,7 @@ def _dbs(env, tool, sid):
 
 
 def _metadata_root(env):
-    return Path(getattr(env, "CC_META_ROOT", Path(env.HOME) / "Library/Application Support/Claude/claude-code-sessions"))
+    return Path(getattr(env, "CC_META_ROOT", platform_paths.claude_meta_root(env.HOME)))
 
 
 def _related_files(env, tool, sid, p):

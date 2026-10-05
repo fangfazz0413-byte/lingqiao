@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import platform_paths
+
 HOME = Path(os.environ.get('BRIDGE_HOME', str(Path.home()))).resolve()
 REPO = Path(os.environ.get('BRIDGE_REPO', str(Path(__file__).resolve().parents[1]))).resolve()
 BRIDGE = REPO / '.bridge'
@@ -22,7 +24,7 @@ APP_DIR = REPO / 'app'
 LEDGER = BRIDGE / 'ledger.json'
 PROVENANCE = BRIDGE / 'provenance.json'
 CC_ROOT = HOME / '.claude/projects'
-CC_META_ROOT = HOME / 'Library/Application Support/Claude/claude-code-sessions'
+CC_META_ROOT = platform_paths.claude_meta_root(HOME)
 CX_ROOT = HOME / '.codex/sessions'
 CX_INDEX = HOME / '.codex/session_index.jsonl'
 CX_SQLITE = HOME / '.codex/thread_history_1.sqlite'
@@ -30,8 +32,8 @@ CX_STATE = HOME / '.codex/state_5.sqlite'
 Z_DB = str(HOME / '.zcode/cli/db/db.sqlite')
 WB_ROOT = HOME / '.workbuddy/projects'
 WB_DB = str(HOME / '.workbuddy/workbuddy.db')
-MT_LEGACY_CACHE = HOME / 'Library/Application Support/Mtoken/cache.json'
-MT_CACHE = HOME / 'Library/Application Support/LingqiaoUsage/cache.json'
+MT_LEGACY_CACHE = platform_paths.app_support(HOME) / 'Mtoken/cache.json'
+MT_CACHE = platform_paths.app_support(HOME) / 'LingqiaoUsage/cache.json'
 TOOLS = {'claude':'Claude Code','codex':'Codex','zcode':'ZCode','workbuddy':'WorkBuddy'}
 VERSION = '3.5.0'
 PORT = int(os.environ.get('BRIDGE_PORT','8791'))
@@ -332,7 +334,9 @@ def request_shutdown():
     _shutdown_event.set()
     plugins.shutdown()
     if _httpd: threading.Thread(target=_httpd.shutdown,daemon=True).start()
-    if _win['main']:
+    if _win['main'] and platform_paths.WINDOWS:
+        _win['main'].destroy()
+    elif _win['main']:
         from AppKit import NSApplication
         from PyObjCTools import AppHelper
         AppHelper.callAfter(NSApplication.sharedApplication().terminate_, None)
@@ -460,13 +464,20 @@ def _subagent_auto_cleaner():
 
 
 def main_closing():
-    if _quitting: return True
+    # macOS 关窗口只是藏起来，菜单栏还在；Windows 没有菜单栏入口，关窗口就是退出。
+    if _quitting or platform_paths.WINDOWS: return True
     _win['main'].hide();return False
 
 
 def main():
     global _httpd, _attention
     parser=argparse.ArgumentParser();parser.add_argument('--no-window',action='store_true');args=parser.parse_args()
+    if platform_paths.WINDOWS:
+        # Windows 默认按 GBK 读写文本；灵桥的数据都是 UTF-8，没开 UTF-8 模式就带上 -X utf8 重新启动自己。
+        if not sys.flags.utf8_mode:
+            import subprocess
+            sys.exit(subprocess.call([sys.executable,'-X','utf8',os.path.abspath(__file__),*sys.argv[1:]]))
+        os.environ['PYTHONUTF8']='1'  # 更新时跑测试、补装依赖的子进程也一样
     os.umask(0o077);BRIDGE.mkdir(parents=True,exist_ok=True)
     try:
         migration=usage_backend.migrate_legacy_cache(MT_LEGACY_CACHE,MT_CACHE)
@@ -491,7 +502,7 @@ def main():
         if args.no_window: _shutdown_event.wait()
         else:
             import webview
-            refs=setup_statusbar()
+            refs=setup_statusbar() if not platform_paths.WINDOWS else None  # 菜单栏用量只有 macOS 有
             _win['main']=webview.create_window('灵桥 · AI 会话工作台',f'http://127.0.0.1:{PORT}/?token={API_TOKEN}',width=1280,height=850,min_size=(960,650),js_api=MainAPI())
             # BrowserView assigns Window.native immediately before
             # before_show.  Apply the rose fallback there, then let the
@@ -504,7 +515,7 @@ def main():
             webview_state=BRIDGE/'webview-state'
             webview_state.mkdir(parents=True,exist_ok=True,mode=0o700)
             webview_state.chmod(0o700)
-            webview.start(private_mode=False,storage_path=str(webview_state))
+            webview.start(private_mode=False,storage_path=str(webview_state),**({'gui':'edgechromium'} if platform_paths.WINDOWS else {}))
     finally:
         plugins.shutdown()
         _httpd.shutdown();_httpd.server_close()

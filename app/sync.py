@@ -20,6 +20,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from bridge_state import atomic_json, load_json
+import platform_paths
 
 HOME = Path(os.environ.get("BRIDGE_HOME", str(Path.home())))
 REPO = Path(os.environ.get("BRIDGE_REPO", str(Path(__file__).resolve().parent.parent)))
@@ -356,7 +357,7 @@ def cc_desktop_project_dir():
     ~/Library/Application Support/Claude/claude-code-sessions/<账号>/<项目>/local_*.json
     里的元数据（cliSessionId 指回 projects 里的 jsonl）。
     """
-    root = HOME / "Library/Application Support/Claude/claude-code-sessions"
+    root = platform_paths.claude_meta_root(HOME)
     if not root.exists():
         return None
     best_dir, best_ts = None, 0

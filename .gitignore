@@ -12,4 +12,7 @@ __pycache__/
 /plugins/*
 !/plugins/README.md
 
+# Windows 安装时在灵桥文件夹里放的快捷方式
+/灵桥.lnk
+
 .DS_Store

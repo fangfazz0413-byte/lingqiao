@@ -29,6 +29,7 @@ import threading
 import time
 
 import bridge_state
+import platform_paths
 
 UUID = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 UUID_RE = re.compile(UUID + r'\Z')
@@ -44,7 +45,13 @@ RUNS_KEPT = 60
 LIST_LIMIT = 400
 # 桌面版主进程和它的 Helper 在跑就不写；chrome-native-host、CheckClaude、crashpad 这些辅助进程无妨。
 BLOCKING = (re.compile(r'(^|/)Claude\.app/Contents/MacOS/Claude\Z'),
-            re.compile(r'(^|/)Claude\.app/Contents/Frameworks/Claude Helper[^/]*\.app/'))
+            re.compile(r'(^|/)Claude\.app/Contents/Frameworks/Claude Helper[^/]*\.app/'),
+            # Windows：桌面版主进程和渲染进程都叫 claude.exe
+            re.compile(r'(?i)(^|[\\/])claude\.exe\Z'))
+# Claude Code 命令行在 Windows 上也叫 claude.exe：装在 .local\bin、WinGet、npm 或桌面版自带的 claude-code 里，不算桌面版
+NOT_DESKTOP = re.compile(r'(?i)[\\/](\.local|claude-code|WinGet|node_modules)[\\/]')
+OPEN_CLAUDE = (['cmd', '/c', 'start', '', 'claude://'] if os.name == 'nt'
+               else ['/usr/bin/open', '-b', CLAUDE_BUNDLE])
 SKIP_REASONS = {'no_transcript': '聊天记录不在本机', 'deleted': '目标账号删过', 'no_id': '没有会话 ID',
                 'duplicate': '来源里重复', 'conflict': '目标里有同名文件', 'changed': '同步时已经变了', 'error': '写入出错'}
 
@@ -66,12 +73,48 @@ def sha256_file(path):
 
 
 def list_processes():
+    if os.name == 'nt':
+        return _windows_processes()
     out = subprocess.run(['/bin/ps', '-axo', 'pid=,comm='], capture_output=True, text=True, timeout=10, check=True).stdout
     rows = []
     for line in out.splitlines():
         match = re.match(r'\s*(\d+)\s+(.+)\Z', line)
         if match:
             rows.append((int(match.group(1)), match.group(2).strip()))
+    return rows
+
+
+def _windows_processes():
+    """Windows 没有 ps：枚举进程号，再逐个取可执行文件的完整路径（取不到的是系统进程，跳过）。"""
+    import ctypes
+    from ctypes import wintypes
+    psapi = ctypes.WinDLL('psapi', use_last_error=True)
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    count = 1024
+    while True:
+        pids = (wintypes.DWORD * count)()
+        needed = wintypes.DWORD()
+        if not psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(needed)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if needed.value < ctypes.sizeof(pids):
+            break
+        count *= 2
+    rows = []
+    for pid in pids[:needed.value // ctypes.sizeof(wintypes.DWORD)]:
+        handle = kernel32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            continue
+        try:
+            buffer = ctypes.create_unicode_buffer(32768)
+            size = wintypes.DWORD(len(buffer))
+            if kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+                rows.append((int(pid), buffer.value))
+        finally:
+            kernel32.CloseHandle(handle)
     return rows
 
 
@@ -131,7 +174,7 @@ class AccountSync:
 
     # ------------------------------------------------------------ 路径与配置
     def meta_root(self):
-        return Path(getattr(self.env, 'CC_META_ROOT', Path(self.env.HOME) / 'Library/Application Support/Claude/claude-code-sessions'))
+        return Path(getattr(self.env, 'CC_META_ROOT', platform_paths.claude_meta_root(self.env.HOME)))
 
     def projects_root(self):
         return Path(getattr(self.env, 'CC_ROOT', Path(self.env.HOME) / '.claude/projects'))
@@ -178,7 +221,8 @@ class AccountSync:
             rows = self.process_lister()
         except Exception as exc:  # noqa: BLE001  ps 不可用时一律当“没法确认”，不写
             return {'running': None, 'blocking': [], 'error': '查不了进程（' + type(exc).__name__ + '）'}
-        blocking = [{'pid': pid, 'name': os.path.basename(comm)} for pid, comm in rows if any(p.search(comm) for p in BLOCKING)]
+        blocking = [{'pid': pid, 'name': os.path.basename(comm)} for pid, comm in rows
+                    if any(p.search(comm) for p in BLOCKING) and not NOT_DESKTOP.search(comm)]
         return {'running': bool(blocking), 'blocking': blocking[:20], 'count': len(blocking), 'error': None}
 
     def _require_quit(self):
@@ -186,7 +230,7 @@ class AccountSync:
         if status['running'] is None:
             raise ValueError('没法确认 Claude 桌面版有没有退出（' + status['error'] + '），这次先不写')
         if status['running']:
-            raise ValueError('Claude 桌面版还开着：先在桌面版里按 ⌘Q 完全退出，再回来同步（预览不受影响）')
+            raise ValueError(f'Claude 桌面版还开着：先{platform_paths.QUIT_CLAUDE}，再回来同步（预览不受影响）')
         return status
 
     # ------------------------------------------------------------ 扫描（只读）
@@ -617,7 +661,7 @@ class AccountSync:
         return {'ok': True, 'run': self.public_run(record)}
 
     def open_claude(self):
-        self.opener(['/usr/bin/open', '-b', CLAUDE_BUNDLE])
+        self.opener(list(OPEN_CLAUDE))
         return {'ok': True}
 
     # ------------------------------------------------------------ HTTP
