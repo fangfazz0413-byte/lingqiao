@@ -74,7 +74,8 @@ class UpdaterTests(unittest.TestCase):
         for _ in range(600):
             with self.u.lock:
                 job = self.u.public_job(self.u.job)
-            if job['status'] != 'running':
+            # 状态先变，更新记录随后才写；记录写好了任务线程才算收尾（不然删临时目录会撞上它）
+            if job['status'] != 'running' and (self.env.BRIDGE / 'update' / 'runs' / (job['id'] + '.json')).exists():
                 return job
             time.sleep(0.05)
         self.fail('更新一直没结束')
