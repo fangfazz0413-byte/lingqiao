@@ -4,6 +4,19 @@
 
 所有东西都在你自己的电脑上跑，不经过任何服务器。
 
+## 选你的版本
+
+| | Mac 版 | Windows 版 |
+|---|---|---|
+| 适用 | macOS，Apple 芯片（M1 及以后） | Windows 10 / 11 |
+| 直接下载 | [lingqiao-mac.zip](https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-mac.zip) | [lingqiao-windows.zip](https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-windows.zip) |
+| 安装 | 解压后在终端里运行 `bash install.sh` | 解压后双击 `install.bat` |
+| 打开 | 双击 `会话桥.app` | 双击桌面上的「灵桥」 |
+
+两个版本是同一套代码，功能基本一样，区别见下面的[「和 macOS 版不一样的地方」](#windows)。所有版本都在 [Releases](https://github.com/fangfazz0413-byte/lingqiao/releases) 页。
+
+直接下载的不能用「检查更新」，新版本出来后要重新下载。想在灵桥里一键更新，按下面的[「安装」](#安装)用 git 克隆。
+
 ![会话列表](docs/screenshots/sessions.png)
 
 ## 能做什么
@@ -51,7 +64,7 @@ bash install.sh
 
 装好后双击 `会话桥.app` 打开，可以把它拖到程序坞。
 
-> 也可以在 GitHub 页面上点 Code → Download ZIP，解压后同样运行 `bash install.sh`。这样装的不能用「检查更新」，以后要手动下载新版本。
+> 也可以直接下载 [lingqiao-mac.zip](https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-mac.zip)，解压后同样运行 `bash install.sh`。这样装的不能用「检查更新」，以后要手动下载新版本。
 
 ### Windows
 
@@ -63,7 +76,9 @@ cd lingqiao
 install.bat
 ```
 
-也可以在灵桥文件夹里直接双击 `install.bat`。它会：
+也可以在灵桥文件夹里直接双击 `install.bat`。不用 git 的话，下载 [lingqiao-windows.zip](https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-windows.zip)，解压后双击 `install.bat`（Windows 可能提示「来自网络的文件」，点「运行」）；这样装的不能用「检查更新」。
+
+`install.bat` 会：
 
 1. 找到 Python 3.13 或更新的版本；
 2. 在 `.bridge\runtime` 里建一个只给灵桥用的环境，装好依赖（版本固定在 `app/requirements-windows.txt`）；
@@ -116,7 +131,9 @@ install.bat
 .bridge\runtime\Scripts\python.exe -X utf8 -B -m unittest discover -s tests     # Windows
 ```
 
-每次推送，GitHub Actions 会在 macOS 和 Windows 上各跑一遍测试，Windows 上还会实际安装并打开一次灵桥。
+每次推送，GitHub Actions 会在 macOS 和 Windows 上各跑一遍测试（Windows 上还会实际安装、从快捷方式打开一次灵桥），都过了再打出 Mac 版、Windows 版两个下载包。
+
+发新版本：改 `app/server.py` 里的 `VERSION`，提交后推一个同名标签（比如 `git tag v3.6.0 && git push origin v3.6.0`），两个下载包会自动发到 Releases 页。
 
 测试全部用临时文件夹和虚构数据，不碰真实会话；页面测试要装 Node.js。代码结构、接口和设置项见 [app/README.md](app/README.md)。
 
@@ -138,6 +155,8 @@ install.bat
 - One-click updates from GitHub, plus local plugins.
 
 Everything runs locally; the UI is served on 127.0.0.1 with a per-launch token.
+
+Downloads: [lingqiao-mac.zip](https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-mac.zip) (macOS, Apple silicon) and [lingqiao-windows.zip](https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-windows.zip) (Windows 10/11) on the [Releases](https://github.com/fangfazz0413-byte/lingqiao/releases) page. Downloaded copies can't self-update; clone with git for one-click updates.
 
 Install on macOS: `git clone` this repository, run `bash install.sh` (needs Python ≥ 3.10, Homebrew Python 3.13 recommended), then open `会话桥.app`.
 

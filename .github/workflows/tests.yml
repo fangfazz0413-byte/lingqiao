@@ -58,3 +58,70 @@ jobs:
           if (-not $ok) { Write-Error '灵桥没起来'; exit 1 }
           if (-not $alive) { Write-Error '灵桥起来后又退出了'; exit 1 }
           Write-Output '从快捷方式打开了灵桥，窗口开着'
+
+  package:
+    # 测试都过了才打包：Mac 版、Windows 版各一个下载包，各自只放该系统用得到的文件
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: 打 Mac 版、Windows 版两个下载包
+        run: |
+          version=$(sed -n "s/^VERSION = '\(.*\)'$/\1/p" app/server.py)
+          echo "灵桥 $version"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF#refs/tags/v}" != "$version" ]]; then
+            echo "::error::版本标签 ${GITHUB_REF#refs/tags/} 和 app/server.py 里的 VERSION = '$version' 不一致"; exit 1
+          fi
+          mkdir dist
+          git archive --format=zip --prefix=lingqiao/ -o dist/lingqiao-mac.zip HEAD -- . ':(exclude).github' \
+            ':(exclude)install.bat' ':(exclude)app/windows_setup.py' ':(exclude)app/requirements-windows.txt' \
+            ':(exclude)app/wincred.py' ':(exclude)app/lingqiao.ico'
+          git archive --format=zip --prefix=lingqiao/ -o dist/lingqiao-windows.zip HEAD -- . ':(exclude).github' \
+            ':(exclude)会话桥.app' ':(exclude)install.sh' ':(exclude)app/repair-runtime.sh' ':(exclude)app/requirements-desktop.txt'
+          python3 - <<'CHECK'
+          import zipfile
+          mac, win = (zipfile.ZipFile(f'dist/lingqiao-{n}.zip') for n in ('mac', 'windows'))
+          for z in (mac, win):
+              print('==', z.filename)
+              print('\n'.join(sorted(i.filename for i in z.infolist() if not i.is_dir())))
+              assert all(i.flag_bits & 0x800 for i in z.infolist() if not i.filename.isascii()), '中文文件名要标 UTF-8'
+          mac_names, win_names = set(mac.namelist()), set(win.namelist())
+          # Mac 包里要有启动器、没有 Windows 的文件；Windows 包反过来；install.bat 要是 CRLF 换行
+          assert 'lingqiao/会话桥.app/Contents/MacOS/会话桥' in mac_names and 'lingqiao/install.sh' in mac_names
+          assert not any('install.bat' in n or 'windows_setup' in n for n in mac_names)
+          assert 'lingqiao/install.bat' in win_names and 'lingqiao/app/windows_setup.py' in win_names
+          assert not any('会话桥.app' in n or n.endswith('install.sh') for n in win_names)
+          assert win.read('lingqiao/install.bat').count(b'\r\n') > 5, 'install.bat 要是 CRLF'
+          print('两个包都检查过了')
+          CHECK
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lingqiao-packages
+          path: dist/*.zip
+
+  release:
+    # 推送 v 开头的版本标签（比如 v3.6.0）时，把两个包发到 GitHub 的 Releases 页
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lingqiao-packages
+          path: dist
+      - name: 发布到 Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "灵桥 ${tag#v}" --notes-file - \
+            "dist/lingqiao-mac.zip#灵桥 Mac 版（Apple 芯片）" "dist/lingqiao-windows.zip#灵桥 Windows 版（Windows 10 / 11）" <<'NOTES'
+          ## 下载哪个
+
+          - **Mac**（Apple 芯片）：下载 `lingqiao-mac.zip`，解压后在终端里进入 `lingqiao` 文件夹运行 `bash install.sh`，装好后双击 `会话桥.app`。
+          - **Windows**（10 / 11）：下载 `lingqiao-windows.zip`，解压后双击 `install.bat`，装好后双击桌面上的「灵桥」。
+
+          下载包装的不能用「检查更新」，新版本出来后重新下载。想一键更新，按 README 用 `git clone` 安装。
+          NOTES
