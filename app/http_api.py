@@ -62,13 +62,13 @@ def make_handler(env):
                     boot='<script>window.BRIDGE_TOKEN='+json.dumps(env.API_TOKEN)+';const bridgeFetch=window.fetch.bind(window);window.fetch=(input,options={})=>{const url=new URL(typeof input==="string"?input:input.url,location.href);const h=new Headers(options.headers||{});if(url.origin===location.origin&&url.pathname.startsWith("/api/"))h.set("X-Bridge-Token",window.BRIDGE_TOKEN);return bridgeFetch(input,{...options,headers:h});};history.replaceState(null,"",location.pathname);</script>'
                     self._send(200,html.replace('<head>','<head>'+boot,1),'text/html; charset=utf-8')
                 elif u.path=='/api/sessions':
-                    sessions=env.collect_sessions(q.get('refresh',['0'])[0]=='1')
+                    sessions,status=env.sessions_snapshot(q.get('refresh',['0'])[0]=='1')
                     days=int(q.get('days',['0'])[0]); minimum=float(q.get('min_mb',['0'])[0]); tool=q.get('tool',['all'])[0]; kw=q.get('q',[''])[0].strip().lower()
                     if days<0 or minimum<0: raise ValueError('筛选值必须非负')
                     now=env.time.time()
                     out=[s for s in sessions if (tool=='all' or s['tool']==tool) and (not days or s['mtime']>=now-days*86400) and s['size']>=minimum*1048576 and (not kw or kw in (s['title']+s['dir']).lower())]
                     counts={t:sum(s['tool']==t for s in sessions) for t in env.TOOLS}; counts['all']=len(sessions)
-                    self._json({'sessions':out,'all_counts':counts,'capabilities':env.capabilities(),'scan_status':env.scan_status()})
+                    self._json({'sessions':out,'all_counts':counts,'capabilities':env.capabilities(),'scan_status':status})
                 elif u.path=='/api/cleanup/plan': self._json(env.bulk_cleanup.get_plan(env,q.get('plan_id',[''])[0]))
                 elif u.path=='/api/cleanup/subagent-auto': self._json(env.bulk_cleanup.auto_settings(env))
                 elif u.path=='/api/session':

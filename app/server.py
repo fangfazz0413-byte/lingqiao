@@ -189,6 +189,13 @@ def collect_sessions(force=False):
         return list(_cache['sessions'])
 
 
+def sessions_snapshot(force=False):
+    """会话列表和扫描状态在同一把锁里一起取：分两次取的话，后台扫描可能恰好在中间做完，
+    页面就会拿到「空列表 + 扫描已结束」，一直显示没有会话（同步、删除之后最容易碰上）。"""
+    with _cache_lock:
+        return collect_sessions(force),scan_status()
+
+
 def scan_status():
     with _cache_lock:
         result={k:_cache[k] for k in ('scanning','generation','error','ts')}

@@ -74,6 +74,19 @@ class ServerIntegration(unittest.TestCase):
    time.sleep(.01);result=s.session_reader.cached_detail(s,'claude',str(p),0,100)
   self.assertEqual(result['total'],205);self.assertEqual(len(result['turns']),100);self.assertEqual(result['next_offset'],100)
   self.assertEqual(len(s.session_reader.cached_detail(s,'claude',str(p),200,100)['turns']),5)
+ def test_snapshot_never_reports_empty_list_as_finished_scan(self):
+  # 同步、删除后缓存被清空并在后台重扫；扫描很快时，旧代码可能返回「空列表 + 扫描已结束」，页面就一直空着
+  row={'tool':'claude','src':'x','title':'t','dir':'/','size':1,'mtime':1}
+  def fast_scan():
+   with s._cache_lock:s._cache.update(sessions=[row],ts=time.time(),generation=s._cache['generation']+1)
+  with patch.object(s,'rescan_sessions',fast_scan):
+   for _ in range(50):
+    s._cache['sessions']=None;s._cache['ts']=0;s.DISK_CACHE.unlink(missing_ok=True)
+    rows,status=s.sessions_snapshot(True)
+    self.assertTrue(rows or status['scanning'],'空列表必须标成还在扫描，页面才会接着刷新')
+    for _ in range(200):
+     if not s._cache['scanning']:break
+     time.sleep(.005)
  def test_api_requires_token_host_origin_and_body_limits(self):
   httpd=ThreadingHTTPServer(('127.0.0.1',0),s.http_api.make_handler(s));port=httpd.server_port
   with patch.object(s,'PORT',port):
