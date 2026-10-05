@@ -35,7 +35,7 @@ WB_DB = str(HOME / '.workbuddy/workbuddy.db')
 MT_LEGACY_CACHE = platform_paths.app_support(HOME) / 'Mtoken/cache.json'
 MT_CACHE = platform_paths.app_support(HOME) / 'LingqiaoUsage/cache.json'
 TOOLS = {'claude':'Claude Code','codex':'Codex','zcode':'ZCode','workbuddy':'WorkBuddy'}
-VERSION = '3.5.0'
+VERSION = '3.6.0'
 PORT = int(os.environ.get('BRIDGE_PORT','8791'))
 API_TOKEN = secrets.token_urlsafe(32)
 INSTANCE_ID = str(uuid.uuid4())
@@ -434,6 +434,16 @@ def setup_statusbar():
     return item,delegate,timer
 
 
+class BridgeHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # Windows 上 SO_REUSEADDR 允许别的程序再绑同一个端口（窗口地址里带着口令），改成独占。
+        if platform_paths.WINDOWS:
+            import socket
+            self.allow_reuse_address = False
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def _existing_instance():
     import urllib.request
     data=bridge_state.load_json(INSTANCE_FILE,{})
@@ -490,7 +500,7 @@ def main():
         bulk_cleanup.recover_plans(ENV)
         if _attention: log('recovery-attention count='+str(len(_attention)))
         plugins.load()
-        try: _httpd=ThreadingHTTPServer(('127.0.0.1',PORT),http_api.make_handler(ENV))
+        try: _httpd=BridgeHTTPServer(('127.0.0.1',PORT),http_api.make_handler(ENV))
         except OSError as e: raise RuntimeError('端口已占用且不是可验证的会话桥实例，已停止启动') from e
         bridge_state.atomic_json(INSTANCE_FILE,{'product':'session-bridge','version':VERSION,'port':PORT,'instance':INSTANCE_ID,'token':API_TOKEN,'pid':os.getpid()})
     threading.Thread(target=_httpd.serve_forever,daemon=True).start();_kick_bg_rescan()

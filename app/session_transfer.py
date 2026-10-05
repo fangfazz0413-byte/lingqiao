@@ -754,9 +754,12 @@ class SessionTransfer:
         if not cwd or cwd == '(未知)':
             return home, '原来的工作目录不知道，放在用户目录下'
         # 在导出那台的用户目录下：换成这台的用户目录（两台用户名不同的时候）。
-        src_home = (source_home or '').rstrip('/')
-        if src_home and src_home != home and (cwd == src_home or cwd.startswith(src_home + '/')):
-            mapped = home + cwd[len(src_home):]
+        # 导出那台可能是 Windows（\）也可能是 macOS（/）：剩下的部分换成这台的分隔符。
+        src_home = (source_home or '').rstrip('/\\')
+        src_sep = '\\' if '\\' in src_home else '/'
+        if src_home and src_home != home and (cwd == src_home or cwd.startswith(src_home + src_sep)):
+            rest = cwd[len(src_home):]
+            mapped = home + (rest.replace(src_sep, os.sep) if src_sep != os.sep else rest)
             if Path(mapped).is_dir():
                 return mapped, '工作目录换成这台电脑上的 ' + mapped
             return mapped, '工作目录换成 ' + mapped + '（这台电脑上还没有这个文件夹）'

@@ -61,6 +61,18 @@ class PathTests(unittest.TestCase):
         self.assertFalse(blocking('/Users/x/Library/Application Support/Claude/claude-code/2.1/claude.app/Contents/MacOS/claude'))
 
 
+class ServerPortTests(unittest.TestCase):
+    def test_second_server_cannot_take_the_same_port(self):
+        import server
+        from http.server import BaseHTTPRequestHandler
+        first = server.BridgeHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
+        try:
+            with self.assertRaises(OSError):
+                server.BridgeHTTPServer(('127.0.0.1', first.server_address[1]), BaseHTTPRequestHandler).server_close()
+        finally:
+            first.server_close()
+
+
 @unittest.skipUnless(os.name == 'nt', '只在 Windows 上跑')
 class WindowsOnlyTests(unittest.TestCase):
     def test_credential_manager_round_trip(self):
