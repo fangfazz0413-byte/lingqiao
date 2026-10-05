@@ -194,12 +194,12 @@
   /* 热力图 */
   .mt-heat { overflow-x: auto; }
   .mt-heat-inner { display: inline-flex; gap: 2px; }
-  .mt-heat-wlabel { display: flex; flex-direction: column; gap: 2px; margin-right: 2px; }
+  .mt-heat-wlabel { display: flex; flex-direction: column; gap: 2px; margin-right: 2px; width: 12px; flex-shrink: 0; }
   .mt-heat-wlabel span { height: 11px; font-size: 9.5px; color: var(--text2); line-height: 11px; }
   .mt-heat-col { display: flex; flex-direction: column; gap: 2px; }
   .mt-heat-cell { width: 11px; height: 11px; border-radius: 2px; background: rgba(255,255,255,.05); }
   .mt-heat-mlabels { display: inline-flex; gap: 2px; margin-bottom: 4px; }
-  .mt-heat-mlabels span { width: 13px; font-size: 10px; color: var(--text2); }
+  .mt-heat-mlabels span { width: 11px; flex-shrink: 0; font-size: 10px; color: var(--text2); }  /* 和格子同宽（11px + 2px 间距），月份才对得上列 */
   /* 柱状/曲线 */
   .mt-bars { display: flex; align-items: flex-end; gap: 2px; height: 118px; }
   .mt-bars .bar { flex: 1; border-radius: 2px 2px 0 0; min-height: 2px; cursor: pointer;
@@ -639,6 +639,37 @@
   .modal-mask.show > *, .appearance-mask.show > * { animation: lq-pop .3s var(--ease) both; }
   #toast { animation: lq-toast .3s var(--ease) both; box-shadow: 0 10px 36px rgba(0,0,0,.28); }
 
+  /* 对话气泡的说话人：用户头像 + 工具图标 */
+  .bubble .who { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; opacity: .78; margin-bottom: 5px; white-space: normal; }
+  .bubble .who .brand-icon { width: 16px; height: 16px; border-radius: 4px; }
+  .who-me { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,.14); }
+  :root[data-theme="cream"] .who-me { background: rgba(0,0,0,.08); }
+  .who-me .ic { width: 11px; height: 11px; stroke-width: 2.2; vertical-align: 0; }
+
+  /* 下拉框、勾选框跟按钮一个样子 */
+  select { -webkit-appearance: none; appearance: none; cursor: pointer; padding-right: 30px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a93a3' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important; background-position: right 10px center !important; background-size: 14px !important;
+    transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease; }
+  select:hover:not(:disabled) { border-color: var(--text3); }
+  select:focus-visible { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input[type="checkbox"] { accent-color: var(--red); cursor: pointer; }
+
+  /* 翻页箭头、面板里的工具图标、面包屑 */
+  .mt-monthpick button, .mt-iconbtn { display: inline-flex; align-items: center; justify-content: center; }
+  .mt-monthpick .ic, .mt-iconbtn .ic { width: 14px; height: 14px; stroke-width: 2.2; vertical-align: 0; }
+  .mt-phead .p-icon .brand-icon { width: 18px; height: 18px; border-radius: 5px; }
+  #crumb > .brand-icon { width: 17px; height: 17px; margin: 0 5px 0 1px; vertical-align: -4px; }
+  .mt-heat-mlabels span { white-space: nowrap; overflow: visible; }
+
+  /* 空状态：一个淡淡的图标 + 一句说明 */
+  .empty { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .empty-ic { width: 46px; height: 46px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center;
+    background: var(--card); border: 1px solid var(--border); color: var(--text3); margin-bottom: 6px; }
+  .empty-ic .ic { width: 22px; height: 22px; stroke-width: 1.6; }
+  .empty small { font-size: 12px; color: var(--text3); opacity: .8; }
+
   @keyframes lq-page { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes lq-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
   @keyframes lq-drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
@@ -655,7 +686,7 @@
 </head>
 <body>
 <!-- 界面图标：同一套线条图标，颜色跟随文字（3.6） -->
-<svg class="ic-sprite" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="i-list" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 9h9M7.5 12h9M7.5 15h5.5"/></symbol><symbol id="i-swap" viewBox="0 0 24 24"><path d="M5 8h13.5M15 4.5 18.5 8 15 11.5M19 16H5.5M9 12.5 5.5 16 9 19.5"/></symbol><symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16"/><rect x="5.5" y="11" width="3.2" height="6" rx="1"/><rect x="10.4" y="6.5" width="3.2" height="10.5" rx="1"/><rect x="15.3" y="13" width="3.2" height="4" rx="1"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V5.3c0-.7.5-1.3 1.2-1.3h2.6c.7 0 1.2.6 1.2 1.3V7M6.5 7l.8 11.2c.1 1 .9 1.8 1.9 1.8h5.6c1 0 1.8-.8 1.9-1.8L17.5 7M10 11v5M14 11v5"/></symbol><symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.7 1.8-1.7h2.1c2.1 0 3.8-1.7 3.8-3.8 0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.7" cy="11.2" r="1.15"/><circle cx="10.5" cy="7.5" r="1.15"/><circle cx="14.9" cy="7.7" r="1.15"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.3-5.4M19.6 4.4v4.3h-4.3"/></symbol><symbol id="i-broom" viewBox="0 0 24 24"><path d="M16.5 3.5 12 10.8M8.2 10.3l7.6 3.4M8.2 10.3c-2 2.7-3.2 5.6-3.4 8.7 3.1.6 6.3-.4 9-2.6l2-2.7-7.6-3.4zM9.7 15.2l-1.9 3.4M12.8 16.3l-1.2 2.6"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4.5M7.5 9 12 4.5 16.5 9M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5V15M7.5 10.5 12 15l4.5-4.5M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></symbol><symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9.5M18.5 7H20M4 17h3.5M12.5 17H20"/><circle cx="16" cy="7" r="2.3"/><circle cx="10" cy="17" r="2.3"/></symbol><symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.7"/><rect x="13" y="4" width="7" height="7" rx="1.7"/><rect x="4" y="13" width="7" height="7" rx="1.7"/><rect x="13" y="13" width="7" height="7" rx="1.7"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></symbol><symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 4 3.5 8.5 12 13l8.5-4.5L12 4z"/><path d="M3.5 12.5 12 17l8.5-4.5"/><path d="M3.5 16.3 12 20.8l8.5-4.5"/></symbol><symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.6 17a8 8 0 1 1 14.8 0"/><path d="M12 14l3.6-4.2"/><circle cx="12" cy="14.2" r="1.4"/></symbol><symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.5 1.5M16.9 16.9l1.5 1.5M5.6 18.4l1.5-1.5M16.9 7.1l1.5-1.5"/></symbol><symbol id="i-sigma" viewBox="0 0 24 24"><path d="M17.5 5.5h-11l6 6.5-6 6.5h11"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17l9-9.5"/></symbol></defs></svg>
+<svg class="ic-sprite" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="i-list" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 9h9M7.5 12h9M7.5 15h5.5"/></symbol><symbol id="i-swap" viewBox="0 0 24 24"><path d="M5 8h13.5M15 4.5 18.5 8 15 11.5M19 16H5.5M9 12.5 5.5 16 9 19.5"/></symbol><symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16"/><rect x="5.5" y="11" width="3.2" height="6" rx="1"/><rect x="10.4" y="6.5" width="3.2" height="10.5" rx="1"/><rect x="15.3" y="13" width="3.2" height="4" rx="1"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V5.3c0-.7.5-1.3 1.2-1.3h2.6c.7 0 1.2.6 1.2 1.3V7M6.5 7l.8 11.2c.1 1 .9 1.8 1.9 1.8h5.6c1 0 1.8-.8 1.9-1.8L17.5 7M10 11v5M14 11v5"/></symbol><symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.7 1.8-1.7h2.1c2.1 0 3.8-1.7 3.8-3.8 0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.7" cy="11.2" r="1.15"/><circle cx="10.5" cy="7.5" r="1.15"/><circle cx="14.9" cy="7.7" r="1.15"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.3-5.4M19.6 4.4v4.3h-4.3"/></symbol><symbol id="i-broom" viewBox="0 0 24 24"><path d="M16.5 3.5 12 10.8M8.2 10.3l7.6 3.4M8.2 10.3c-2 2.7-3.2 5.6-3.4 8.7 3.1.6 6.3-.4 9-2.6l2-2.7-7.6-3.4zM9.7 15.2l-1.9 3.4M12.8 16.3l-1.2 2.6"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4.5M7.5 9 12 4.5 16.5 9M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5V15M7.5 10.5 12 15l4.5-4.5M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></symbol><symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9.5M18.5 7H20M4 17h3.5M12.5 17H20"/><circle cx="16" cy="7" r="2.3"/><circle cx="10" cy="17" r="2.3"/></symbol><symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.7"/><rect x="13" y="4" width="7" height="7" rx="1.7"/><rect x="4" y="13" width="7" height="7" rx="1.7"/><rect x="13" y="13" width="7" height="7" rx="1.7"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></symbol><symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 4 3.5 8.5 12 13l8.5-4.5L12 4z"/><path d="M3.5 12.5 12 17l8.5-4.5"/><path d="M3.5 16.3 12 20.8l8.5-4.5"/></symbol><symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.6 17a8 8 0 1 1 14.8 0"/><path d="M12 14l3.6-4.2"/><circle cx="12" cy="14.2" r="1.4"/></symbol><symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.5 1.5M16.9 16.9l1.5 1.5M5.6 18.4l1.5-1.5M16.9 7.1l1.5-1.5"/></symbol><symbol id="i-sigma" viewBox="0 0 24 24"><path d="M17.5 5.5h-11l6 6.5-6 6.5h11"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17l9-9.5"/></symbol><symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.8 20c.9-3.6 3.7-5.6 7.2-5.6s6.3 2 7.2 5.6"/></symbol><symbol id="i-chev-l" viewBox="0 0 24 24"><path d="M14.5 6 8.5 12l6 6"/></symbol><symbol id="i-chev-r" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol><symbol id="i-trend" viewBox="0 0 24 24"><path d="M4 17.5 9.5 12l3.5 3.5L20 8.5"/><path d="M15.5 8.5H20V13"/></symbol><symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13.5 6.4 6.2c.3-.8 1-1.2 1.8-1.2h7.6c.8 0 1.5.4 1.8 1.2L20 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4.5z"/><path d="M4 13.5h4.3l1.2 2.3h5l1.2-2.3H20"/></symbol></defs></svg>
 <aside>
   <div class="logo"><span class="brand-word">灵桥</span><span class="red">AI 会话工作台</span></div>
   <div class="nav-sec">会话分组</div>
@@ -1010,7 +1041,7 @@ function renderList() {
   const list = $("#list");
   const entrance = listEntrance; listEntrance = false;
   list.classList.toggle("lq-enter", entrance);
-  if (!state.data.length) { list.innerHTML = `<div class="empty">${state.scanStatus.scanning ? "正在后台扫描，请稍候…" : "没有符合条件的会话"}</div>`; return; }
+  if (!state.data.length) { list.innerHTML = `<div class="empty">${state.scanStatus.scanning ? "正在后台扫描，请稍候…" : `<span class="empty-ic">${ic("inbox")}</span>没有符合条件的会话`}</div>`; return; }
   list.innerHTML = ""; let lastDay = "";
   for (const s of state.data) {
     const date = new Date(s.mtime * 1000), day = date.toDateString();
@@ -1091,7 +1122,7 @@ function detailEntry(s) {
 function renderDetail(row, s, entry) {
   const detail = row.querySelector(".detail");
   detail.innerHTML = '<div class="subline">以下为文字记录，已过滤系统块和工具事件；原生附件与操作上下文请在来源工具查看。</div>' +
-    entry.turns.map(turn => `<div class="bubble ${turn.role === "user" ? "user" : "ai"}"><div class="who">${turn.role === "user" ? "🧑 我" : "🤖 AI"}</div>${md(turn.text)}</div>`).join("") +
+    entry.turns.map(turn => `<div class="bubble ${turn.role === "user" ? "user" : "ai"}"><div class="who">${turn.role === "user" ? `<span class="who-me">${ic("user")}</span>我` : `${brandIcon(s.tool, "who-av")}${esc(TOOL_NAMES[s.tool] || "AI")}`}</div>${md(turn.text)}</div>`).join("") +
     (entry.error ? `<div class="inline-error">读取失败：${esc(entry.error)}</div>` : "") +
     (entry.busy ? '<div class="loading">正在读取文字对话…</div>' : "") +
     (!entry.busy && entry.loaded && !entry.turns.length ? '<div class="empty">没有可显示的文字对话</div>' : "") +
@@ -1141,7 +1172,7 @@ async function loadTrash() {
     const items = result.items || result.trash || result.entries;
     if (!Array.isArray(items)) throw new Error("回收站数据格式不正确");
     const list = $("#trash-list"); list.innerHTML = "";
-    if (!items.length) { list.innerHTML = '<div class="empty">回收站为空</div>'; return; }
+    if (!items.length) { list.innerHTML = `<div class="empty"><span class="empty-ic">${ic("trash")}</span>回收站为空<small>删掉的会话会先放在这里，可以恢复</small></div>`; return; }
     for (const item of items) {
       const id = item.trash_id || item.id, row = document.createElement("div"); row.className = "row trash-row";
       const restorable = Boolean(id) && item.restorable !== false && !item.restored;
@@ -1690,7 +1721,7 @@ function heatmap(days, highlight, clickable) {
   for (let i = 0; i < flat.length; i += 7) cols.push(flat.slice(i, i + 7));
   const maxTok = Math.max(1, ...days.map(d => d.tokens));
   // 月份标签：列首月变化处
-  let mlabels = '<div class="mt-heat-mlabels"><span style="width:16px"></span>';
+  let mlabels = '<div class="mt-heat-mlabels"><span style="width:14px"></span>';
   cols.forEach((col, i) => {
     const d = col.find(x => x);
     let lbl = "";
@@ -1726,9 +1757,9 @@ function monthPicker(month, months) {
   const i = months.indexOf(month);
   const [y, m] = month.split("-");
   return `<div class="mt-monthpick">
-    <button ${i >= months.length - 1 ? "disabled" : ""} onclick="mtPickMonth('${months[i + 1] || month}')">‹</button>
+    <button ${i >= months.length - 1 ? "disabled" : ""} onclick="mtPickMonth('${months[i + 1] || month}')" aria-label="上个月">${ic("chev-l")}</button>
     <span>${y} 年 ${+m} 月</span>
-    <button ${i <= 0 ? "disabled" : ""} onclick="mtPickMonth('${months[i - 1] || month}')">›</button></div>`;
+    <button ${i <= 0 ? "disabled" : ""} onclick="mtPickMonth('${months[i - 1] || month}')" aria-label="下个月">${ic("chev-r")}</button></div>`;
 }
 function monthBars(mdays, stats, selected, today) {
   const maxV = Math.max(1, ...stats.map(s => s[0]));
@@ -1789,7 +1820,7 @@ function renderOverview() {
     badge: `活跃 ${L.heat.filter(h => h.tokens > 0).length} 天`, icon: ic("grid"),
     inner: heatmap(L.heat, null, true) });
   const last30 = L.heat.slice(-30);
-  const linePanel = panel({ title: "近 30 天", icon: "📈",
+  const linePanel = panel({ title: "近 30 天", icon: ic("trend"),
     inner: !last30.length ? "暂无日用量" : svgLine(last30.map(h => h.tokens), 300, 78, MT.glow, true) +
       `<div style="display:flex;justify-content:space-between;font-size:10px;color:${MT.dim}">
       <span>${last30[0].day.slice(5)}</span><span>${last30[Math.floor(last30.length / 2)].day.slice(5)}</span><span>${last30[last30.length - 1].day.slice(5)}</span></div>` });
@@ -1836,8 +1867,8 @@ function renderDaily() {
         <span class="d-date">${ymd(day)}</span><span class="d-wd">${weekday(day)}</span>
         ${isToday ? '<span class="mt-today-pill">今天</span>' : ""}
         <span style="margin-left:auto"></span>
-        <button class="mt-iconbtn" ${idx <= 0 ? "disabled" : ""} onclick="mtPickDay('${L.days[idx - 1] || day}')">‹</button>
-        <button class="mt-iconbtn" ${idx >= L.days.length - 1 ? "disabled" : ""} onclick="mtPickDay('${L.days[idx + 1] || day}')">›</button></div>
+        <button class="mt-iconbtn" ${idx <= 0 ? "disabled" : ""} onclick="mtPickDay('${L.days[idx - 1] || day}')" aria-label="前一天">${ic("chev-l")}</button>
+        <button class="mt-iconbtn" ${idx >= L.days.length - 1 ? "disabled" : ""} onclick="mtPickDay('${L.days[idx + 1] || day}')" aria-label="后一天">${ic("chev-r")}</button></div>
       ${st[0] <= 0 ? `<div class="mt-dim" style="text-align:center;padding:36px 0;font-size:13px">当日无调用记录</div>` : `
       <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
         <div><div class="mt-stat-big mt-grad-text">${fmtTok(st[0])}</div>
@@ -1914,7 +1945,7 @@ function renderSources() {
   return `<div class="mt-chips">${L.sources.map(x =>
       `<button class="mt-chip ${x.label === sel ? "active" : ""}" onclick="mtGo('sources',null,${jsArg(x.label)})">${brandIcon(x.label || x.name)}${esc(x.label)}</button>`).join("")}</div>`
     + monthPicker(month, L.months)
-    + panel({ title: esc(src.label), badge: `活跃 ${sl.activeDays} 天`, icon: "▤", inner: `
+    + panel({ title: esc(src.label), badge: `活跃 ${sl.activeDays} 天`, icon: brandIcon(src.label) || ic("database"), inner: `
       <div class="mt-stat-row">
         <div><div class="mt-stat-big mt-grad-text" style="font-size:22px">${fmtTok(sl.tokens)}</div>
           <div class="mt-stat-lbl">当月 Token</div></div>
