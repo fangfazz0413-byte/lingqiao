@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>灵桥 · 多平台 AI 会话管理器</title>
+<meta name="description" content="把 Claude Code、Codex、ZCode、WorkBuddy 的本地会话放在一起管：浏览、搜索、跨工具接着聊、两台电脑之间搬会话、看套餐额度。Mac 和 Windows 都能用，开源免费。">
+<meta property="og:title" content="灵桥 · 多平台 AI 会话管理器">
+<meta property="og:description" content="四个 AI 编程工具的会话，一处管好。Mac 和 Windows 都能用，开源免费。">
+<meta property="og:image" content="screenshots/sessions.png">
+<style>
+  :root {
+    --bg: #0b0e14; --bg2: #11141a; --card: #151920; --card2: #1c212a; --border: #262c37;
+    --text: #f1f3f7; --text2: #a3abba; --text3: #7e8898; --rose: #fb6b83; --rose2: #e0506a; --blue: #69aaff; --green: #52db8f;
+    --shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f7fb; --bg2: #eef1f6; --card: #ffffff; --card2: #f3f5f9; --border: #dfe4ec; --text: #1d222b; --text2: #586273; --text3: #7b8595;
+      --rose: #df5672; --rose2: #c9445f; --shadow: 0 24px 60px rgba(30,40,60,.14); }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Segoe UI", sans-serif; }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+  .ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+  /* 顶栏 */
+  header { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); background: color-mix(in srgb, var(--bg) 78%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+  header .wrap { display: flex; align-items: center; gap: 28px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; }
+  .brand img { width: 32px; height: 32px; border-radius: 8px; }
+  nav { margin-left: auto; display: flex; gap: 24px; font-size: 15px; color: var(--text2); }
+  nav a:hover { color: var(--text); }
+  @media (max-width: 640px) { nav a:not(.gh) { display: none; } }
+
+  /* 首屏 */
+  .hero { position: relative; overflow: hidden; padding: 84px 0 40px; text-align: center; }
+  .hero::before { content: ""; position: absolute; width: 900px; height: 900px; left: 50%; top: -420px; transform: translateX(-60%); border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--rose) 30%, transparent), transparent 65%); filter: blur(20px); pointer-events: none; }
+  .hero::after { content: ""; position: absolute; width: 700px; height: 700px; right: -200px; top: 120px; border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--blue) 20%, transparent), transparent 65%); filter: blur(20px); pointer-events: none; }
+  .hero > * { position: relative; }
+  .eyebrow { display: inline-flex; gap: 8px; align-items: center; padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--text2);
+    background: var(--card); border: 1px solid var(--border); }
+  .eyebrow b { color: var(--rose); }
+  h1 { font-size: clamp(36px, 6vw, 64px); line-height: 1.15; letter-spacing: -1.5px; margin: 22px auto 0; max-width: 900px; font-weight: 900; }
+  h1 em { font-style: normal; color: var(--rose); }
+  .lead { margin: 20px auto 0; max-width: 680px; font-size: clamp(16px, 2.2vw, 19px); color: var(--text2); }
+  .tools { margin-top: 18px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+  .tool { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    background: var(--card); border: 1px solid var(--border); }
+  .tool i { width: 24px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px;
+    font-style: normal; font-weight: 800; color: #fff; }
+  .cta { margin-top: 34px; display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 14px; font-size: 16px; font-weight: 700;
+    border: 1px solid var(--border); background: var(--card); transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease; }
+  .btn:hover { transform: translateY(-2px); border-color: var(--text3); box-shadow: 0 12px 30px rgba(0,0,0,.18); }
+  .btn:active { transform: translateY(0) scale(.98); }
+  .btn.primary { background: linear-gradient(160deg, var(--rose), var(--rose2)); border-color: transparent; color: #fff;
+    box-shadow: 0 14px 34px color-mix(in srgb, var(--rose) 35%, transparent); }
+  .btn small { display: block; font-size: 12px; font-weight: 500; opacity: .8; }
+  .btn .label { text-align: left; line-height: 1.3; }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--text3); }
+
+  .shot { margin: 56px auto 0; max-width: 1080px; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow);
+    background: var(--bg2); }
+  .shot .bar { height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 12px; background: var(--card2); border-bottom: 1px solid var(--border); }
+  .shot .bar i { width: 11px; height: 11px; border-radius: 50%; }
+  .shot img, .shot video { display: block; width: 100%; height: auto; }
+
+  /* 区块 */
+  section { padding: 80px 0; }
+  h2 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -.8px; text-align: center; font-weight: 900; }
+  .sub { text-align: center; color: var(--text2); margin-top: 10px; font-size: 17px; }
+  .grid { margin-top: 44px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+  .card { padding: 24px; border-radius: 18px; background: var(--card); border: 1px solid var(--border); transition: transform .2s ease, border-color .2s ease; }
+  .card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--rose) 45%, var(--border)); }
+  .card .ico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--rose);
+    background: color-mix(in srgb, var(--rose) 13%, transparent); }
+  .card h3 { margin-top: 16px; font-size: 19px; }
+  .card p { margin-top: 8px; color: var(--text2); font-size: 15px; }
+
+  .gallery { margin-top: 44px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  @media (max-width: 900px) { .gallery { grid-template-columns: 1fr; } }
+  .gallery figure { border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--card); }
+  .gallery img { display: block; width: 100%; height: auto; }
+  .gallery figcaption { padding: 12px 16px; font-size: 14px; color: var(--text2); }
+
+  .privacy { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; }
+  @media (max-width: 800px) { .privacy { grid-template-columns: 1fr; } }
+  .privacy h2, .privacy .sub { text-align: left; }
+  .checks { list-style: none; display: grid; gap: 14px; }
+  .checks li { display: flex; gap: 12px; padding: 16px 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); color: var(--text2); }
+  .checks b { color: var(--text); }
+  .checks .ic { color: var(--green); margin-top: 3px; }
+
+  .dl { margin-top: 44px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .dl { grid-template-columns: 1fr; } }
+  .dl .card h3 { display: flex; align-items: center; gap: 10px; margin-top: 0; font-size: 22px; }
+  .dl ol { margin: 14px 0 18px 20px; color: var(--text2); font-size: 15px; display: grid; gap: 6px; }
+  .dl code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; padding: 2px 7px; border-radius: 6px;
+    background: var(--card2); border: 1px solid var(--border); color: var(--text); }
+  .dl .btn { width: 100%; justify-content: center; }
+  .note { margin-top: 18px; text-align: center; color: var(--text3); font-size: 14px; }
+  .note a { color: var(--rose); }
+
+  footer { border-top: 1px solid var(--border); padding: 30px 0 44px; color: var(--text3); font-size: 13px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; }
+
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.8,.2,1); }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .btn, .card { transition: none; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-list" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 9h9M7.5 12h9M7.5 15h5.5"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M5 8h13.5M15 4.5 18.5 8 15 11.5M19 16H5.5M9 12.5 5.5 16 9 19.5"/></symbol>
+  <symbol id="i-move" viewBox="0 0 24 24"><rect x="2.5" y="5" width="8" height="6" rx="1.2"/><rect x="13.5" y="13" width="8" height="6" rx="1.2"/><path d="M6.5 14v2.5a2 2 0 0 0 2 2H11M17.5 10V7.5a2 2 0 0 0-2-2H13"/></symbol>
+  <symbol id="i-broom" viewBox="0 0 24 24"><path d="M16.5 3.5 12 10.8M8.2 10.3l7.6 3.4M8.2 10.3c-2 2.7-3.2 5.6-3.4 8.7 3.1.6 6.3-.4 9-2.6l2-2.7-7.6-3.4zM9.7 15.2l-1.9 3.4M12.8 16.3l-1.2 2.6"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.6 17a8 8 0 1 1 14.8 0"/><path d="M12 14l3.6-4.2"/><circle cx="12" cy="14.2" r="1.4"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.7 1.8-1.7h2.1c2.1 0 3.8-1.7 3.8-3.8 0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.7" cy="11.2" r="1.15"/><circle cx="10.5" cy="7.5" r="1.15"/><circle cx="14.9" cy="7.7" r="1.15"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17l9-9.5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5V15M7.5 10.5 12 15l4.5-4.5M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></symbol>
+  <symbol id="i-apple" viewBox="0 0 24 24"><path d="M15.5 3.5c.1 1.3-.4 2.5-1.2 3.3-.8.9-1.9 1.4-3 1.3-.1-1.2.5-2.5 1.2-3.2.8-.8 2-1.4 3-1.4zM18.8 16.5c-.5 1.2-.8 1.7-1.5 2.7-1 1.4-2.3 3.1-4 3.1-1.5 0-1.9-1-3.9-1-2 0-2.5 1-3.9 1-1.7 0-2.9-1.6-3.9-3-2.7-3.9-3-8.5-1.3-11 1.2-1.8 3.1-2.8 4.8-2.8 1.8 0 2.9 1 4.4 1 1.4 0 2.3-1 4.4-1 1.5 0 3.1.8 4.3 2.2-3.7 2-3.1 7.4.6 8.8z"/></symbol>
+  <symbol id="i-win" viewBox="0 0 24 24"><path d="M3.5 5.6 10.5 4.6v6.6h-7zM12.5 4.3l8-1.1v8h-8zM3.5 12.8h7v6.6l-7-1zM12.5 12.8h8v8l-8-1.1z"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></symbol>
+</defs></svg>
+
+<header><div class="wrap">
+  <a class="brand" href="#"><img src="logo.png" alt="">灵桥</a>
+  <nav><a href="#features">功能</a><a href="#privacy">数据安全</a><a href="#download">下载</a>
+    <a class="gh" href="https://github.com/fangfazz0413-byte/lingqiao">GitHub ↗</a></nav>
+</div></header>
+
+<main>
+  <div class="hero"><div class="wrap">
+    <span class="eyebrow"><b>v3.6</b> 现在也支持 Windows 了</span>
+    <h1>四个 AI 编程工具的会话，<br><em>一处管好</em></h1>
+    <p class="lead">灵桥把 Claude Code、Codex、ZCode、WorkBuddy 的本地会话放在一起：浏览、搜索、跨工具接着聊、两台电脑之间搬会话，顺便看看各家编程套餐还剩多少额度。</p>
+    <div class="tools">
+      <span class="tool"><i style="background:#d97757">C</i>Claude Code</span><span class="tool"><i style="background:#2f6f5e">Cx</i>Codex</span>
+      <span class="tool"><i style="background:#3d5bb5">Z</i>ZCode</span><span class="tool"><i style="background:#2f7fd0">W</i>WorkBuddy</span>
+    </div>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-mac.zip"><svg class="ic"><use href="#i-apple"/></svg><span class="label">下载 Mac 版<small>Apple 芯片 · macOS</small></span></a>
+      <a class="btn primary" href="https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-windows.zip"><svg class="ic"><use href="#i-win"/></svg><span class="label">下载 Windows 版<small>Windows 10 / 11</small></span></a>
+      <a class="btn" href="https://github.com/fangfazz0413-byte/lingqiao"><svg class="ic"><use href="#i-gh"/></svg><span class="label">在 GitHub 上查看<small>源代码 · 用 git 安装可一键更新</small></span></a>
+    </div>
+    <p class="meta">开源免费 · MIT 许可 · 所有数据只在你自己的电脑上</p>
+    <div class="shot reveal" id="hero-media"><div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+      <img src="screenshots/sessions.png" alt="灵桥会话列表：四个工具的会话按时间排在一起"></div>
+  </div></div>
+
+  <section id="features"><div class="wrap">
+    <h2 class="reveal">该有的，都在一个窗口里</h2>
+    <p class="sub reveal">不改你的工作方式，只把散在四处的会话收拢起来。</p>
+    <div class="grid">
+      <div class="card reveal"><div class="ico"><svg class="ic"><use href="#i-list"/></svg></div><h3>一处看全，一搜就到</h3><p>四个工具的会话按时间排在一起，按工具、天数、大小筛选，按标题和目录搜索；点开就能看完整对话。</p></div>
+      <div class="card reveal"><div class="ico"><svg class="ic"><use href="#i-swap"/></svg></div><h3>跨工具接着聊</h3><p>在一个工具里聊到一半，一键转成另一个工具的会话接着聊。四个工具两两之间，12 个方向，重复转不会出两份。</p></div>
+      <div class="card reveal"><div class="ico"><svg class="ic"><use href="#i-move"/></svg></div><h3>两台电脑之间搬会话</h3><p>打成压缩包导出，在另一台电脑的灵桥里导入。导入前先预览，导完可以整次撤销。</p></div>
+      <div class="card reveal"><div class="ico"><svg class="ic"><use href="#i-broom"/></svg></div><h3>清理不怕删错</h3><p>挑出 15 / 30 天没动过的闲置会话或子代理对话，先预览、逐条勾选；删掉的进回收站，随时能恢复。</p></div>
+      <div class="card reveal"><div class="ico"><svg class="ic"><use href="#i-gauge"/></svg></div><h3>额度和用量一眼看清</h3><p>智谱 GLM、Kimi、MiniMax 编程套餐的剩余额度，加上本机 token 用量，按天、按模型统计。</p></div>
+      <div class="card reveal"><div class="ico"><svg class="ic"><use href="#i-palette"/></svg></div><h3>五套皮肤，四种字体</h3><p>樱桃奶油、海盐蓝、抹茶薄荷、薰衣草、奶油白，挑一个你每天都愿意打开的样子。</p></div>
+    </div>
+    <div class="gallery">
+      <figure class="reveal"><img src="screenshots/conversation.png" alt="点开会话看完整对话" loading="lazy"><figcaption>点开就能看完整对话</figcaption></figure>
+      <figure class="reveal"><img src="screenshots/export.png" alt="批量导出会话" loading="lazy"><figcaption>勾选会话，打包带去另一台电脑</figcaption></figure>
+      <figure class="reveal"><img src="screenshots/usage.png" alt="用量概览" loading="lazy"><figcaption>额度、用量、模型分布</figcaption></figure>
+    </div>
+  </div></section>
+
+  <section id="privacy"><div class="wrap privacy">
+    <div class="reveal"><h2>会话只留在你的电脑上</h2><p class="sub">灵桥是一个本地程序，没有账号、没有云端。它读写的都是这台电脑上四个工具自己的数据。</p></div>
+    <ul class="checks">
+      <li class="reveal"><svg class="ic"><use href="#i-check"/></svg><span><b>只在本机运行</b>：界面只监听 127.0.0.1，每次启动换一个随机口令，别的网页和程序调不了。</span></li>
+      <li class="reveal"><svg class="ic"><use href="#i-check"/></svg><span><b>只有三件事会联网</b>：查你填了密钥的套餐额度、检查更新（可以关）、安装时下载依赖。</span></li>
+      <li class="reveal"><svg class="ic"><use href="#i-check"/></svg><span><b>改之前先留后路</b>：同步、导入、删除都先写恢复日志，删掉的进回收站，中途被关掉下次自动补偿。</span></li>
+      <li class="reveal"><svg class="ic"><use href="#i-check"/></svg><span><b>密钥放系统保管</b>：macOS 存钥匙串，Windows 存凭据管理器，不写进任何文件。</span></li>
+    </ul>
+  </div></section>
+
+  <section id="download"><div class="wrap">
+    <h2 class="reveal">下载灵桥</h2>
+    <p class="sub reveal">同一套代码，两个版本。四个工具不用都装，装了哪个就显示哪个。</p>
+    <div class="dl">
+      <div class="card reveal"><h3><svg class="ic"><use href="#i-apple"/></svg>Mac 版</h3>
+        <ol><li>需要 Apple 芯片的 Mac，和 Python 3.10 以上（推荐 Homebrew 的 Python 3.13）</li>
+          <li>下载解压后，在终端里进入文件夹运行 <code>bash install.sh</code></li><li>双击 <code>会话桥.app</code> 打开，可以拖到程序坞</li></ol>
+        <a class="btn primary" href="https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-mac.zip"><svg class="ic"><use href="#i-download"/></svg>下载 lingqiao-mac.zip</a></div>
+      <div class="card reveal"><h3><svg class="ic"><use href="#i-win"/></svg>Windows 版</h3>
+        <ol><li>需要 Windows 10 / 11，和 Python 3.13 以上（安装时勾选「Add python.exe to PATH」）</li>
+          <li>下载解压后，双击 <code>install.bat</code></li><li>双击桌面上的「灵桥」打开</li></ol>
+        <a class="btn primary" href="https://github.com/fangfazz0413-byte/lingqiao/releases/latest/download/lingqiao-windows.zip"><svg class="ic"><use href="#i-download"/></svg>下载 lingqiao-windows.zip</a></div>
+    </div>
+    <p class="note reveal">想在灵桥里一键「检查更新」？用 <code>git clone https://github.com/fangfazz0413-byte/lingqiao.git</code> 安装。所有版本在 <a href="https://github.com/fangfazz0413-byte/lingqiao/releases">Releases</a>。</p>
+  </div></section>
+</main>
+
+<footer><div class="wrap">
+  <span>灵桥 · MIT 许可 · © 2026 fangfazz</span>
+  <span>个人开发的非官方工具，与 Anthropic、OpenAI、智谱、腾讯等公司无关；各工具名称和图标归各自所有者。</span>
+</div></footer>
+
+<script>
+  // 往下滚时依次浮现
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(entries => entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px' }) : null;
+  document.querySelectorAll('.reveal').forEach((el, i) => { el.style.transitionDelay = (i % 3) * 70 + 'ms'; io ? io.observe(el) : el.classList.add('in'); });
+</script>
+</body>
+</html>
