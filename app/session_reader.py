@@ -35,7 +35,7 @@ def connect(path):
 
 def title_maps(env):
     cc, cx = {}, {}
-    root = platform_paths.claude_meta_root(env.HOME)
+    root = Path(getattr(env, 'CC_META_ROOT', platform_paths.claude_meta_root(env.HOME)))
     for p in root.rglob('local_*.json') if root.exists() else []:
         try:
             d = json.loads(p.read_text()); cc[d.get('cliSessionId')] = d.get('title') or ''

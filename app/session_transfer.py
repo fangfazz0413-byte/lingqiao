@@ -429,7 +429,7 @@ class SessionTransfer:
                 tools = '、'.join(f'{TOOL_NAMES[t]} {n}' for t, n in by_tool.items() if n)
                 zf.writestr(_zinfo('README.txt'), README.format(machine=machine['name'], at=manifest['created_at'], count=len(sessions), tools=tools))
             os.chmod(tmp, 0o600)
-            with open(tmp, 'rb') as stream:
+            with open(tmp, 'r+b') as stream:   # Windows 上只读打开的文件不能 fsync
                 os.fsync(stream.fileno())
             os.link(tmp, dest)
         except FileExistsError as exc:

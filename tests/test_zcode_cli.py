@@ -1,5 +1,6 @@
 import importlib
 import json
+from contextlib import closing
 import os
 from pathlib import Path
 import sqlite3
@@ -69,7 +70,7 @@ class ZCodeTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def count(self, database):
-        with sqlite3.connect(database) as conn:
+        with closing(sqlite3.connect(database)) as conn:   # 用完就关：Windows 上开着的数据库文件删不掉
             return conn.execute("SELECT COUNT(*) FROM session").fetchone()[0]
 
     def test_workbuddy_rows_use_safe_mode_and_no_fabricated_model(self):

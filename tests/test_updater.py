@@ -182,6 +182,24 @@ class UpdaterTests(unittest.TestCase):
         self.u.apply({'confirm': True, 'expect': self.expect(status)})
         self.assertEqual(self.wait()['status'], 'done')
 
+    @unittest.skipUnless(updater.WINDOWS, 'Windows：依赖清单变了，等重启时再补装')
+    def test_windows_dependency_change_waits_for_restart(self):
+        calls = []
+        real_run = subprocess.run
+
+        def runner(argv, **kw):
+            if 'windows_setup.py' in ' '.join(map(str, argv)) or argv[0] == '/bin/bash':
+                calls.append(argv)
+                return subprocess.CompletedProcess(argv, 0, '', '')
+            return real_run(argv, **kw)
+        self.u.runner = runner
+        self.publish({'app/requirements-windows.txt': 'pywebview==2.0\n'}, '升级依赖')
+        self.u.apply({'confirm': True, 'expect': self.expect(self.u.check())})
+        self.assertEqual(self.wait()['status'], 'done')
+        self.assertEqual(calls, [])                                    # 灵桥还开着，正在用的依赖文件换不掉
+        self.assertTrue(self.u.job['repair_on_restart'])
+
+    @unittest.skipIf(updater.WINDOWS, 'macOS：更新时当场补装依赖')
     def test_dependency_change_reinstalls_and_rollback_reinstalls_again(self):
         calls = []
         real_run = subprocess.run

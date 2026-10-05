@@ -17,13 +17,13 @@ import server as s
 class ServerIntegration(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(); r=Path(self.tmp.name).resolve(); self.r=r
-  paths={'HOME':r,'REPO':r/'repo','APP_DIR':ROOT/'app','BRIDGE':r/'repo/.bridge','CC_ROOT':r/'.claude/projects','CC_META_ROOT':r/'Library/Application Support/Claude/claude-code-sessions','CX_ROOT':r/'.codex/sessions','CX_STATE':r/'state.sqlite','CX_SQLITE':r/'history.sqlite','CX_INDEX':r/'index.jsonl','Z_DB':r/'zcode.sqlite','WB_ROOT':r/'.workbuddy/projects','WB_DB':r/'wb.sqlite','MT_CACHE':r/'cache.json','CONFIG':r/'repo/.bridge/config.json','DISK_CACHE':r/'repo/.bridge/cache.json','LEDGER':r/'repo/.bridge/ledger.json','PROVENANCE':r/'repo/.bridge/provenance.json'}
+  paths={'HOME':r,'REPO':r/'repo','APP_DIR':ROOT/'app','BRIDGE':r/'repo/.bridge','CC_ROOT':r/'.claude/projects','CC_META_ROOT':s.platform_paths.claude_meta_root(r),'CX_ROOT':r/'.codex/sessions','CX_STATE':r/'state.sqlite','CX_SQLITE':r/'history.sqlite','CX_INDEX':r/'index.jsonl','Z_DB':r/'zcode.sqlite','WB_ROOT':r/'.workbuddy/projects','WB_DB':r/'wb.sqlite','MT_CACHE':r/'cache.json','CONFIG':r/'repo/.bridge/config.json','DISK_CACHE':r/'repo/.bridge/cache.json','LEDGER':r/'repo/.bridge/ledger.json','PROVENANCE':r/'repo/.bridge/provenance.json'}
   self.patches=[patch.object(s,k,v) for k,v in paths.items()]
   self.patches+=[patch.object(s.sync,'HOME',r),patch.object(s,'log',lambda message:None)]
   for p in self.patches:p.start()
   for name in ('CC_ROOT','CC_META_ROOT','CX_ROOT','WB_ROOT','BRIDGE'):getattr(s,name).mkdir(parents=True,exist_ok=True)
   for attr,name in [('CX_STATE','codex-state'),('CX_SQLITE','codex-history'),('Z_DB','zcode'),('WB_DB','workbuddy')]:
-   c=sqlite3.connect(getattr(s,attr));c.executescript((ROOT/'tests/fixtures'/f'{name}.sql').read_text());c.close()
+   c=sqlite3.connect(getattr(s,attr));c.executescript('BEGIN;'+(ROOT/'tests/fixtures'/f'{name}.sql').read_text()+'\nCOMMIT;');c.close()  # 一次提交：Windows 上逐条落盘要好几秒
   c=sqlite3.connect(s.WB_DB)
   c.execute('INSERT INTO sessions (id,cwd,user_id,title,status,created_at,updated_at,last_activity_at,transport) VALUES (?,?,?,?,?,?,?,?,?)',('seed','/fixture','user-fixture','seed','completed',1,1,1,'local'));c.commit();c.close()
   s._cache.update(sessions=[],ts=time.time(),scanning=False,generation=0,error=None)
@@ -133,6 +133,8 @@ class ServerIntegration(unittest.TestCase):
   from types import SimpleNamespace
   hidden=[]
   with patch.object(s,'_win',{'main':SimpleNamespace(hide=lambda:hidden.append(True))}),patch.object(s,'_quitting',False):
+   if s.platform_paths.WINDOWS:  # Windows 没有菜单栏入口：关窗口就是退出，不藏起来
+    self.assertTrue(s.main_closing());self.assertEqual(hidden,[]);return
    self.assertFalse(s.main_closing());self.assertEqual(hidden,[True])
    s._quitting=True;self.assertTrue(s.main_closing());self.assertEqual(hidden,[True])
 if __name__=='__main__':unittest.main()

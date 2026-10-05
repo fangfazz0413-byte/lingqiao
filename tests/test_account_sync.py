@@ -55,7 +55,7 @@ def tree_digest(folder):
     out = {}
     for path in sorted(Path(folder).rglob('*')):
         if path.is_file() and not path.is_symlink():
-            out[str(path.relative_to(folder))] = hashlib.sha256(path.read_bytes()).hexdigest()
+            out[path.relative_to(folder).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
     return out
 
 
@@ -63,7 +63,7 @@ class Sandbox:
     def __init__(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.base = Path(self.tmp.name).resolve()
-        self.claude = self.base / 'Library' / 'Application Support' / 'Claude'
+        self.claude = asy.platform_paths.claude_meta_root(self.base).parent
         self.meta = self.claude / 'claude-code-sessions'
         self.projects = self.base / '.claude' / 'projects' / '-Volumes-WorkDisk'
         self.bridge = self.base / 'repo' / '.bridge'

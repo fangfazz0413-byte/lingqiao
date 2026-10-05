@@ -12,6 +12,7 @@ import unittest
 STAGE = Path(__file__).resolve().parents[1]
 
 
+@unittest.skipIf(os.name == 'nt', 'macOS 的启动器和 bash 脚本；Windows 用 install.bat 和 app/windows_setup.py')
 class DesktopRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

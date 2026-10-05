@@ -29,7 +29,7 @@ class Crash(BaseException):
 
 def machine_paths(r):
     return {'HOME': r, 'REPO': r / 'repo', 'BRIDGE': r / 'repo/.bridge', 'CC_ROOT': r / '.claude/projects',
-            'CC_META_ROOT': r / 'Library/Application Support/Claude/claude-code-sessions', 'CX_ROOT': r / '.codex/sessions',
+            'CC_META_ROOT': s.platform_paths.claude_meta_root(r), 'CX_ROOT': r / '.codex/sessions',
             'CX_STATE': r / 'state.sqlite', 'CX_SQLITE': r / 'history.sqlite', 'CX_INDEX': r / 'index.jsonl', 'Z_DB': r / 'zcode.sqlite',
             'WB_ROOT': r / '.workbuddy/projects', 'WB_DB': r / 'wb.sqlite', 'MT_CACHE': r / 'cache.json',
             'CONFIG': r / 'repo/.bridge/config.json', 'DISK_CACHE': r / 'repo/.bridge/cache.json',
@@ -41,7 +41,7 @@ def build_machine(r, *, user='user-b'):
     for name in ('CC_ROOT', 'CX_ROOT', 'WB_ROOT', 'BRIDGE'):
         paths[name].mkdir(parents=True, exist_ok=True)
     for attr, name in [('CX_STATE', 'codex-state'), ('CX_SQLITE', 'codex-history'), ('Z_DB', 'zcode'), ('WB_DB', 'workbuddy')]:
-        c = sqlite3.connect(paths[attr]); c.executescript((ROOT / 'tests/fixtures' / f'{name}.sql').read_text()); c.close()
+        c = sqlite3.connect(paths[attr]); c.executescript('BEGIN;' + (ROOT / 'tests/fixtures' / f'{name}.sql').read_text() + '\nCOMMIT;'); c.close()
     if user:
         c = sqlite3.connect(paths['WB_DB'])
         c.execute('INSERT INTO sessions (id,cwd,user_id,title,status,created_at,updated_at,last_activity_at,transport) VALUES (?,?,?,?,?,?,?,?,?)',
