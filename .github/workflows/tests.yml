@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: '要发布的版本号（比如 3.6.0，要和 app/server.py 的 VERSION 一致）；留空只测试和打包'
+        required: false
+        default: ''
 
 jobs:
   test:
@@ -66,11 +71,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: 打 Mac 版、Windows 版两个下载包
+        env:
+          RELEASE: ${{ inputs.release }}
         run: |
           version=$(sed -n "s/^VERSION = '\(.*\)'$/\1/p" app/server.py)
           echo "灵桥 $version"
           if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF#refs/tags/v}" != "$version" ]]; then
             echo "::error::版本标签 ${GITHUB_REF#refs/tags/} 和 app/server.py 里的 VERSION = '$version' 不一致"; exit 1
+          fi
+          if [[ -n "$RELEASE" && "$RELEASE" != "$version" ]]; then
+            echo "::error::要发布的 $RELEASE 和 app/server.py 里的 VERSION = '$version' 不一致"; exit 1
           fi
           mkdir dist
           git archive --format=zip --prefix=lingqiao/ -o dist/lingqiao-mac.zip HEAD -- . ':(exclude).github' \
@@ -100,9 +110,9 @@ jobs:
           path: dist/*.zip
 
   release:
-    # 推送 v 开头的版本标签（比如 v3.6.0）时，把两个包发到 GitHub 的 Releases 页
+    # 推送 v 开头的版本标签（比如 v3.6.0），或者手动运行时填了版本号：把两个包发到 GitHub 的 Releases 页
     needs: package
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release != '')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -114,9 +124,11 @@ jobs:
       - name: 发布到 Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ inputs.release }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "灵桥 ${tag#v}" --notes-file - \
+          if [[ -n "$RELEASE" ]]; then tag="v$RELEASE"; else tag="${GITHUB_REF#refs/tags/}"; fi
+          # 标签不存在时 gh 会在这次测试过的提交上建
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "灵桥 ${tag#v}" --notes-file - \
             "dist/lingqiao-mac.zip#灵桥 Mac 版（Apple 芯片）" "dist/lingqiao-windows.zip#灵桥 Windows 版（Windows 10 / 11）" <<'NOTES'
           ## 下载哪个
 

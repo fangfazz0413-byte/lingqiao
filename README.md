@@ -133,7 +133,7 @@ install.bat
 
 每次推送，GitHub Actions 会在 macOS 和 Windows 上各跑一遍测试（Windows 上还会实际安装、从快捷方式打开一次灵桥），都过了再打出 Mac 版、Windows 版两个下载包。
 
-发新版本：改 `app/server.py` 里的 `VERSION`，提交后推一个同名标签（比如 `git tag v3.6.0 && git push origin v3.6.0`），两个下载包会自动发到 Releases 页。
+发新版本：改 `app/server.py` 里的 `VERSION`，提交后推一个同名标签（比如 `git tag v3.6.0 && git push origin v3.6.0`），或者在 GitHub 的 Actions → 测试 → Run workflow 里填上版本号，两个下载包会自动发到 Releases 页。
 
 测试全部用临时文件夹和虚构数据，不碰真实会话；页面测试要装 Node.js。代码结构、接口和设置项见 [app/README.md](app/README.md)。
 
