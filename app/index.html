@@ -569,30 +569,114 @@
   .mt-bars .bar, .mt-hours .bar { background:var(--red); opacity:.42; }
   .mt-bars .bar:hover, .mt-bars .bar.sel { background:var(--red); opacity:1; }
   :root[data-theme="cream"] .appearance-option small, :root[data-theme="cream"] .hint-note, :root[data-theme="cream"] .row-sub { color:var(--text2); }
+  /* ===== 3.6 · 按钮统一与动效 =====
+     所有可点的东西：同样的高度、圆角、图标间距；悬停变色、按下回弹、点击有水波；
+     切换页面、展开对话、弹窗、提示条都有进出动效。系统开了「减少动态效果」就全部关掉。 */
+  :root { --ease: cubic-bezier(.2,.8,.2,1); --t-fast: .14s; --t: .22s; --t-slow: .34s; }
+  .ic-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .ic { width: 15px; height: 15px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round; vertical-align: -2px; }
+  .nav-symbol .ic { width: 17px; height: 17px; }
+  .mt-kpi .k-icon .ic { width: 13px; height: 13px; vertical-align: -1px; }
+  .mt-phead .p-icon .ic { width: 14px; height: 14px; vertical-align: -2px; }
+  .mt-tab .ic { width: 14px; height: 14px; }
+  .mt-dayhead .ic { width: 16px; height: 16px; }
+  .mt-refresh { display: inline-flex; align-items: center; justify-content: center; }
+  .mt-refresh .ic { width: 16px; height: 16px; }
+
+  /* 统一尺寸：工具栏一排 34px，会话行里的小按钮一排 28px */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px;
+    padding: 0 14px; line-height: 1; white-space: nowrap; }
+  .btn .ic { margin-left: -2px; }
+  .btn:hover:not(:disabled) { border-color: var(--text3); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .appearance-btn .ic { color: var(--red); }
+  .appearance-btn { color: var(--text); border-color: var(--border2); }
+  .appearance-btn:hover:not(:disabled) { border-color: var(--red); background: var(--accent-soft); }
+  .search input { height: 34px; }
+  .chips { height: 34px; align-items: stretch; }
+  .chip { display: inline-flex; align-items: center; }
+  .tbtn, .exp-btn { height: 28px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; }
+  .del-btn .ic { width: 16px; height: 16px; }
+  .update-btn { display: inline-flex; align-items: center; height: 24px; margin-top: 8px; }
+  .aside-foot { display: flex; flex-direction: column; align-items: flex-start; }
+  .appearance-option { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; }
+
+  /* 过渡：颜色、边框、阴影平滑变化，按下时轻轻压下去 */
+  .btn, .tbtn, .exp-btn, .del-btn, .update-btn, .chip, .mt-tab, .mt-chip, .mt-iconbtn, .mt-refresh, .nav-item,
+  .appearance-close, .appearance-option, .row, .kpi, .mt-panel {
+    transition: background var(--t-fast) ease, border-color var(--t-fast) ease, color var(--t-fast) ease,
+      box-shadow var(--t) ease, transform var(--t-fast) var(--ease), opacity var(--t-fast) ease; }
+  .btn:active:not(:disabled), .tbtn:active:not(:disabled), .exp-btn:active:not(:disabled), .del-btn:active:not(:disabled),
+  .update-btn:active, .chip:active, .mt-tab:active, .mt-chip:active, .mt-iconbtn:active:not(:disabled), .mt-refresh:active,
+  .appearance-close:active, .appearance-option:active, .nav-item:active { transform: scale(.965); }
+  .row:hover { box-shadow: 0 6px 22px rgba(0,0,0,.16); }
+  .row-head:active { background: var(--card2); }
+  .mt-refresh:active .ic, #btn-refresh:active .ic { transform: rotate(-90deg); transition: transform var(--t) var(--ease); }
+  .nav-item .nav-symbol, .nav-item > .brand-icon { transition: transform var(--t) var(--ease); }
+  .nav-item:hover .nav-symbol, .nav-item:hover > .brand-icon { transform: scale(1.08); }
+  .nav-item.active::before { animation: lq-bar var(--t-slow) var(--ease) both; }
+
+  /* 点击水波（灵桥里的 lqRipple 加的） */
+  .btn, .tbtn, .exp-btn, .chip, .mt-tab, .mt-chip, .appearance-option { position: relative; overflow: hidden; }
+  .lq-ripple { position: absolute; border-radius: 50%; pointer-events: none; background: currentColor; opacity: .16;
+    transform: scale(0); animation: lq-ripple .55s var(--ease) forwards; }
+
+  /* 页面切换：新页面淡入、轻轻上浮；会话列表逐行进场 */
+  #page-sessions, body.view-usage #page-usage, body.view-trash #page-trash, body.view-accounts #page-accounts,
+  body.view-plugin .plugin-page.on { animation: lq-page var(--t-slow) var(--ease) both; }
+  #list.lq-enter > .row, #list.lq-enter > .group-label { animation: lq-rise .36s var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 24ms); }
+  #mt-body > * { animation: lq-rise .32s var(--ease) both; }
+  #mt-body > :nth-child(2) { animation-delay: 40ms; } #mt-body > :nth-child(3) { animation-delay: 80ms; }
+  #mt-body > :nth-child(n+4) { animation-delay: 120ms; }
+  .row.open .detail { animation: lq-drop .28s var(--ease) both; }
+  .row.open { border-color: var(--border2); }
+  .mt-tab.active { box-shadow: inset 0 0 0 1px var(--border2); }
+
+  /* 弹窗和提示条 */
+  .modal-mask.show, .appearance-mask.show { animation: lq-fade .2s ease both; }
+  .modal-mask.show > *, .appearance-mask.show > * { animation: lq-pop .3s var(--ease) both; }
+  #toast { animation: lq-toast .3s var(--ease) both; box-shadow: 0 10px 36px rgba(0,0,0,.28); }
+
+  @keyframes lq-page { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes lq-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes lq-drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  @keyframes lq-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes lq-pop { from { opacity: 0; transform: translateY(10px) scale(.965); } to { opacity: 1; transform: none; } }
+  @keyframes lq-toast { from { opacity: 0; transform: translate(-50%, 12px) scale(.97); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @keyframes lq-bar { from { transform: scaleY(.3); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes lq-ripple { to { transform: scale(1); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
+    .lq-ripple { display: none; }
+  }
 </style>
 </head>
 <body>
+<!-- 界面图标：同一套线条图标，颜色跟随文字（3.6） -->
+<svg class="ic-sprite" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="i-list" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 9h9M7.5 12h9M7.5 15h5.5"/></symbol><symbol id="i-swap" viewBox="0 0 24 24"><path d="M5 8h13.5M15 4.5 18.5 8 15 11.5M19 16H5.5M9 12.5 5.5 16 9 19.5"/></symbol><symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16"/><rect x="5.5" y="11" width="3.2" height="6" rx="1"/><rect x="10.4" y="6.5" width="3.2" height="10.5" rx="1"/><rect x="15.3" y="13" width="3.2" height="4" rx="1"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V5.3c0-.7.5-1.3 1.2-1.3h2.6c.7 0 1.2.6 1.2 1.3V7M6.5 7l.8 11.2c.1 1 .9 1.8 1.9 1.8h5.6c1 0 1.8-.8 1.9-1.8L17.5 7M10 11v5M14 11v5"/></symbol><symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.7 1.8-1.7h2.1c2.1 0 3.8-1.7 3.8-3.8 0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.7" cy="11.2" r="1.15"/><circle cx="10.5" cy="7.5" r="1.15"/><circle cx="14.9" cy="7.7" r="1.15"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.3-5.4M19.6 4.4v4.3h-4.3"/></symbol><symbol id="i-broom" viewBox="0 0 24 24"><path d="M16.5 3.5 12 10.8M8.2 10.3l7.6 3.4M8.2 10.3c-2 2.7-3.2 5.6-3.4 8.7 3.1.6 6.3-.4 9-2.6l2-2.7-7.6-3.4zM9.7 15.2l-1.9 3.4M12.8 16.3l-1.2 2.6"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4.5M7.5 9 12 4.5 16.5 9M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5V15M7.5 10.5 12 15l4.5-4.5M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></symbol><symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9.5M18.5 7H20M4 17h3.5M12.5 17H20"/><circle cx="16" cy="7" r="2.3"/><circle cx="10" cy="17" r="2.3"/></symbol><symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.7"/><rect x="13" y="4" width="7" height="7" rx="1.7"/><rect x="4" y="13" width="7" height="7" rx="1.7"/><rect x="13" y="13" width="7" height="7" rx="1.7"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></symbol><symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 4 3.5 8.5 12 13l8.5-4.5L12 4z"/><path d="M3.5 12.5 12 17l8.5-4.5"/><path d="M3.5 16.3 12 20.8l8.5-4.5"/></symbol><symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.6 17a8 8 0 1 1 14.8 0"/><path d="M12 14l3.6-4.2"/><circle cx="12" cy="14.2" r="1.4"/></symbol><symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.5 1.5M16.9 16.9l1.5 1.5M5.6 18.4l1.5-1.5M16.9 7.1l1.5-1.5"/></symbol><symbol id="i-sigma" viewBox="0 0 24 24"><path d="M17.5 5.5h-11l6 6.5-6 6.5h11"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17l9-9.5"/></symbol></defs></svg>
 <aside>
   <div class="logo"><span class="brand-word">灵桥</span><span class="red">AI 会话工作台</span></div>
   <div class="nav-sec">会话分组</div>
-  <div class="nav-item active" data-g="all"><span class="nav-symbol" aria-hidden="true">▤</span>全部会话 <span class="cnt"></span></div>
+  <div class="nav-item active" data-g="all"><span class="nav-symbol" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-list"></use></svg></span>全部会话 <span class="cnt"></span></div>
   <div class="nav-item" data-g="claude"><img class="brand-icon" src="/assets/icons/claude.png" alt="" aria-hidden="true">Claude Code <span class="cnt"></span></div>
-  <div class="nav-item nav-sub" data-g="accounts" title="Claude Code 双账号会话：切账号后把另一个账号的会话补过来"><span class="nav-symbol" aria-hidden="true">⇄</span>双账号会话</div>
+  <div class="nav-item nav-sub" data-g="accounts" title="Claude Code 双账号会话：切账号后把另一个账号的会话补过来"><span class="nav-symbol" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-swap"></use></svg></span>双账号会话</div>
   <div class="nav-item" data-g="codex"><img class="brand-icon" src="/assets/icons/codex.png" alt="" aria-hidden="true">Codex <span class="cnt"></span></div>
   <div class="nav-item" data-g="zcode"><img class="brand-icon" src="/assets/icons/zcode.png" alt="" aria-hidden="true">ZCode <span class="cnt"></span></div>
   <div class="nav-item" data-g="workbuddy"><img class="brand-icon" src="/assets/icons/workbuddy.png" alt="" aria-hidden="true">WorkBuddy <span class="cnt"></span></div>
   <div class="nav-sec">数据</div>
-  <div class="nav-item" data-g="usage"><span class="nav-symbol" aria-hidden="true">◷</span>用量概览</div>
-  <div class="nav-item" data-g="trash"><span class="nav-symbol" aria-hidden="true">⌑</span>回收站</div>
+  <div class="nav-item" data-g="usage"><span class="nav-symbol" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-chart"></use></svg></span>用量概览</div>
+  <div class="nav-item" data-g="trash"><span class="nav-symbol" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-trash"></use></svg></span>回收站</div>
   <div id="plugin-nav"></div>
-  <div class="aside-foot" id="aside-foot">本机四工具会话 · v3.5<button class="update-btn" id="update-button" title="看看 GitHub 上灵桥和插件有没有新版本">检查更新</button></div>
+  <div class="aside-foot" id="aside-foot"><span>本机四工具会话 · <span id="app-version">v3.6</span></span><button class="update-btn" id="update-button" title="看看 GitHub 上灵桥和插件有没有新版本">检查更新</button></div>
 </aside>
 
 <main>
   <div class="topbar">
     <div class="crumb" id="crumb">/ 会话 / <b>全部会话</b></div>
     <div class="top-right">
-      <button class="btn appearance-btn" id="appearance-button">✦ 外观</button><button class="btn" id="btn-refresh">↻ 刷新</button>
+      <button class="btn appearance-btn" id="appearance-button"><svg class="ic" aria-hidden="true"><use href="#i-palette"></use></svg>外观</button><button class="btn" id="btn-refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"></use></svg>刷新</button>
       <div class="status" id="service-status"><span class="ok"></span><span id="service-status-text">连接服务…</span></div>
     </div>
   </div>
@@ -637,8 +721,8 @@
         <div class="chip" data-v="30">近 30 天</div>
       </div>
       <div class="search"><input id="f-q" type="search" placeholder="搜索标题或目录…"></div>
-      <button class="btn cleanup-button" id="cleanup-button">⌑ 清理闲置会话</button>
-      <div class="transfer-buttons"><button class="btn" id="transfer-batch" title="把当前列表里的会话勾选后打成一个压缩包">⇪ 批量导出</button><button class="btn" id="transfer-import" title="导入另一台电脑的灵桥导出的会话压缩包">⇩ 导入会话</button></div>
+      <button class="btn cleanup-button" id="cleanup-button"><svg class="ic" aria-hidden="true"><use href="#i-broom"></use></svg>清理闲置会话</button>
+      <div class="transfer-buttons"><button class="btn" id="transfer-batch" title="把当前列表里的会话勾选后打成一个压缩包"><svg class="ic" aria-hidden="true"><use href="#i-upload"></use></svg>批量导出</button><button class="btn" id="transfer-import" title="导入另一台电脑的灵桥导出的会话压缩包"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg>导入会话</button></div>
     </div>
 
     <div class="sec-title">会话列表 <span class="hint" id="list-hint"></span></div>
@@ -650,8 +734,8 @@
       <div class="mt-head">
         <div class="mt-title">用量概览</div>
         <div class="mt-upd" id="mt-upd">载入中…</div>
-        <button class="btn" id="mt-settings" title="配置额度来源">⚙ 额度设置</button>
-        <button class="mt-refresh" id="mt-refresh" title="立即刷新">↻</button>
+        <button class="btn" id="mt-settings" title="配置额度来源"><svg class="ic" aria-hidden="true"><use href="#i-sliders"></use></svg>额度设置</button>
+        <button class="mt-refresh" id="mt-refresh" title="立即刷新"><svg class="ic" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
       </div>
       <div class="mt-tabs" id="mt-tabs"></div>
       <div id="mt-error" class="inline-error" role="status"></div>
@@ -731,6 +815,8 @@
 </div>
 
 <script>
+// 界面图标（3.6）：引用页面顶部的线条图标
+const ic = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 const $ = s => document.querySelector(s);
 
 const APPEARANCE_KEY = "lingqiao.appearance.v1";
@@ -919,8 +1005,11 @@ async function loadList(force = false) {
     else toast(`读取失败，保留上次列表：${error.message}`, false);
   }
 }
+let listEntrance = true;   // 3.6：下一次渲染列表时逐行进场（切分组、改筛选、搜索后置上）
 function renderList() {
   const list = $("#list");
+  const entrance = listEntrance; listEntrance = false;
+  list.classList.toggle("lq-enter", entrance);
   if (!state.data.length) { list.innerHTML = `<div class="empty">${state.scanStatus.scanning ? "正在后台扫描，请稍候…" : "没有符合条件的会话"}</div>`; return; }
   list.innerHTML = ""; let lastDay = "";
   for (const s of state.data) {
@@ -932,6 +1021,7 @@ function renderList() {
     }
     const key = sessionKey(s), entry = state.details.get(key);
     const row = document.createElement("div"); row.dataset.key = key;
+    if (entrance) row.style.setProperty("--i", Math.min(list.children.length, 14));
     row.className = "row" + (s.mirror ? " mirror" : "") + (entry?.open ? " open" : "");
     let syncHtml;
     if (s.read_only_reason) {
@@ -945,7 +1035,7 @@ function renderList() {
         return `<button class="tbtn ${done ? "done" : !capability.supported ? "disabled" : busy ? "busy" : ""}" ${disabled ? "disabled" : ""} data-target="${target}" title="${esc(capability.reason).replace(/"/g, "&quot;")}">${brandIcon(target)}${busy ? "同步中…" : TOOL_NAMES[target] + (done ? " ✓" : "")}</button>`;
       }).join("") + "</div>";
     }
-    row.innerHTML = `<div class="row-head"><span class="tool-badge tb-${s.tool}">${brandIcon(s.tool)}${esc(s.tool_name)}</span><div class="row-main"><div class="row-title">${esc(s.title)}</div><div class="row-sub">${fmtTime(s.mtime)} · ${esc(s.dir)}</div></div>${syncHtml}<div class="row-size">${fmtSize(s.size)}</div><button class="exp-btn" title="导出这条会话：打成压缩包，拿到另一台电脑的灵桥里导入" ${s.missing_file ? "disabled" : ""}>导出</button><button class="del-btn" title="移入回收站" ${(state.pending.has(`delete:${key}`) || s.archived || s.kind === "subagent") ? "disabled" : ""}>🗑</button></div><div class="detail"></div>`;
+    row.innerHTML = `<div class="row-head"><span class="tool-badge tb-${s.tool}">${brandIcon(s.tool)}${esc(s.tool_name)}</span><div class="row-main"><div class="row-title">${esc(s.title)}</div><div class="row-sub">${fmtTime(s.mtime)} · ${esc(s.dir)}</div></div>${syncHtml}<div class="row-size">${fmtSize(s.size)}</div><button class="exp-btn" title="导出这条会话：打成压缩包，拿到另一台电脑的灵桥里导入" ${s.missing_file ? "disabled" : ""}>导出</button><button class="del-btn" title="移入回收站" ${(state.pending.has(`delete:${key}`) || s.archived || s.kind === "subagent") ? "disabled" : ""}>${ic("trash")}</button></div><div class="detail"></div>`;
     row.querySelector(".row-head").addEventListener("click", event => { if (!event.target.closest(".sync-to") && !event.target.closest(".del-btn") && !event.target.closest(".exp-btn")) toggleDetail(s); });
     row.querySelector(".exp-btn").addEventListener("click", () => withTransfer(page => page.exportSessions([s])));
     row.querySelectorAll(".tbtn:not(:disabled)").forEach(button => button.addEventListener("click", () => doSync(button, s)));
@@ -1369,7 +1459,7 @@ $("#appearance-button").addEventListener("click", openAppearance); $("#appearanc
 const PLUGINS = new Map();   // 装在 plugins/ 里的插件：id → /api/plugins 给的信息
 function selectNav(nav) {
   document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active")); nav.classList.add("active");
-  state.group = nav.dataset.g; state.listController?.abort(); clearTimeout(state.scanTimer); ++state.listRequest;
+  state.group = nav.dataset.g; state.listController?.abort(); clearTimeout(state.scanTimer); ++state.listRequest; listEntrance = true;
   state.trashController?.abort(); ++state.trashRequest;
   const plugin = PLUGINS.get(state.group);
   document.body.classList.toggle("view-usage", state.group === "usage");
@@ -1681,22 +1771,22 @@ function renderOverview() {
   const today = L.today.day;
   const aggs = modelsOn([today]);
   const kpis = `<div class="mt-kpis">`
-    + kpiTile("☀", "今日", fmtTok(L.stat_today.tokens), `${Math.round(L.stat_today.calls)} 次调用`, `mtOpenDay('${today}')`)
-    + kpiTile("📅", "近 7 天", fmtTok(L.stat_7d.tokens), `${Math.round(L.stat_7d.calls)} 次调用`)
-    + kpiTile("📊", "本月", fmtTok(L.month_tokens), `${Math.round(L.month_calls)} 次调用`, `mtPickMonth('${L.month}');mtGo('models')`)
-    + kpiTile("Σ", "历史累计", fmtTok(L.total_tokens),
+    + kpiTile(ic("sun"), "今日", fmtTok(L.stat_today.tokens), `${Math.round(L.stat_today.calls)} 次调用`, `mtOpenDay('${today}')`)
+    + kpiTile(ic("calendar"), "近 7 天", fmtTok(L.stat_7d.tokens), `${Math.round(L.stat_7d.calls)} 次调用`)
+    + kpiTile(ic("chart"), "本月", fmtTok(L.month_tokens), `${Math.round(L.month_calls)} 次调用`, `mtPickMonth('${L.month}');mtGo('models')`)
+    + kpiTile(ic("sigma"), "历史累计", fmtTok(L.total_tokens),
         L.total_cost > 0 ? `成本 $${Math.round(L.total_cost).toLocaleString()}` : `${L.sources.length} 个来源`)
     + `</div>`;
   const modelPanel = panel({ title: "模型分布",
-    badge: aggs.length ? `今日 · ${aggs.length} 个模型` : "今日", icon: "◈",
+    badge: aggs.length ? `今日 · ${aggs.length} 个模型` : "今日", icon: ic("layers"),
     inner: !aggs.length ? `<span class="mt-dim" style="font-size:12.5px">今日暂无调用</span>`
       : shareStrip(aggs, L.stat_today.tokens)
       + aggs.slice(0, 4).map((m, i) => modelShareRow(i, m, L.stat_today.tokens)).join("")
       + `<button class="mt-more" onclick="mtOpenDay('${today}')">${aggs.length > 4 ? "全部 " + aggs.length + " 个" : "明细"} ›</button>` });
-  const quotaPanel = panel({ title: "Coding Plan 额度", icon: "◎",
+  const quotaPanel = panel({ title: "Coding Plan 额度", icon: ic("gauge"),
     inner: (d.quota || []).map(quotaLine).join("") });
   const heatPanel = panel({ title: "近 12 个月",
-    badge: `活跃 ${L.heat.filter(h => h.tokens > 0).length} 天`, icon: "▦",
+    badge: `活跃 ${L.heat.filter(h => h.tokens > 0).length} 天`, icon: ic("grid"),
     inner: heatmap(L.heat, null, true) });
   const last30 = L.heat.slice(-30);
   const linePanel = panel({ title: "近 30 天", icon: "📈",
@@ -1739,10 +1829,10 @@ function renderDaily() {
   const isToday = day === L.today.day;
   return `<div style="display:flex;align-items:center;gap:8px">${monthPicker(month, L.months)}
       ${!isToday ? `<span style="margin-left:auto"></span><button class="mt-chip" onclick="mtOpenDay('${L.today.day}')">今天</button>` : `<span style="margin-left:auto"></span>`}</div>`
-    + panel({ title: "每日用量", badge: `合计 ${fmtTok(msl.tokens)} · 活跃 ${msl.activeDays} 天`, icon: "📊",
+    + panel({ title: "每日用量", badge: `合计 ${fmtTok(msl.tokens)} · 活跃 ${msl.activeDays} 天`, icon: ic("chart"),
       inner: monthBars(mdays, stats, day, L.today.day) })
     + panel({ inner: `
-      <div class="mt-dayhead"><span style="color:${MT.glow2}">📅</span>
+      <div class="mt-dayhead"><span style="color:${MT.glow2}">${ic("calendar")}</span>
         <span class="d-date">${ymd(day)}</span><span class="d-wd">${weekday(day)}</span>
         ${isToday ? '<span class="mt-today-pill">今天</span>' : ""}
         <span style="margin-left:auto"></span>
@@ -1777,7 +1867,7 @@ function renderModels() {
   const total = aggs.reduce((a, m) => a + m.tokens, 0);
   const calls = aggs.reduce((a, m) => a + m.calls, 0);
   return monthPicker(month, L.months)
-    + panel({ title: "模型汇总", badge: aggs.length ? `${aggs.length} 个模型` : null, icon: "◈",
+    + panel({ title: "模型汇总", badge: aggs.length ? `${aggs.length} 个模型` : null, icon: ic("layers"),
       inner: !aggs.length ? `<div class="mt-dim" style="text-align:center;padding:26px 0;font-size:12.5px">该月无调用记录</div>`
         : `<div style="display:flex;align-items:baseline;gap:8px">
           <span class="mt-stat-big mt-grad-text">${fmtTok(total)}</span>
@@ -1834,7 +1924,7 @@ function renderSources() {
       </div>
       <div style="margin-top:10px">${heatmap(allYear.heatDays, month, true)}</div>
       ${src.note ? `<div class="mt-note">${esc(src.note)}</div>` : ""}` })
-    + panel({ title: "模型分布", badge: aggs.length ? `${aggs.length} 个模型` : null, icon: "◈",
+    + panel({ title: "模型分布", badge: aggs.length ? `${aggs.length} 个模型` : null, icon: ic("layers"),
       inner: !aggs.length ? `<div class="mt-dim" style="text-align:center;padding:20px 0;font-size:12.5px">该月无调用记录</div>`
         : (() => { const total = aggs.reduce((a, m) => a + m.tokens, 0);
           return shareStrip(aggs, total) + aggs.map((m, i) => modelShareRow(i, m, total, true)).join(""); })() });
@@ -1844,8 +1934,8 @@ function renderUsage() {
   const d = mtState.data;
   if (!d) return;
   $("#mt-upd").textContent = sourceTimestampText(d.at);
-  const tabs = [["overview", "▦ 概览"], ["daily", "📅 每日"], ["models", "◈ 模型"],
-    ["quota", "◎ 额度"], ["sources", "▤ 来源"]];
+  const tabs = [["overview", ic("grid") + "概览"], ["daily", ic("calendar") + "每日"], ["models", ic("layers") + "模型"],
+    ["quota", ic("gauge") + "额度"], ["sources", ic("database") + "来源"]];
   $("#mt-tabs").innerHTML = tabs.map(([k, lbl]) =>
     `<div class="mt-tab ${mtState.tab === k ? "active" : ""}" onclick="mtGo('${k}')">${lbl}</div>`).join("");
   const body = { overview: renderOverview, daily: renderDaily,
@@ -1900,17 +1990,17 @@ setInterval(() => { if (mtState.data || state.group === "usage") loadUsage(false
 /* 筛选 */
 document.querySelectorAll("#f-size .chip").forEach(chip => chip.addEventListener("click", () => {
   document.querySelectorAll("#f-size .chip").forEach(item => item.classList.remove("active"));
-  chip.classList.add("active"); state.size = chip.dataset.v; loadList();
+  chip.classList.add("active"); state.size = chip.dataset.v; listEntrance = true; loadList();
 }));
 document.querySelectorAll("#f-time .chip").forEach(chip => chip.addEventListener("click", () => {
   document.querySelectorAll("#f-time .chip").forEach(item => item.classList.remove("active"));
-  chip.classList.add("active"); state.time = chip.dataset.v; loadList();
+  chip.classList.add("active"); state.time = chip.dataset.v; listEntrance = true; loadList();
 }));
 let searchTimer;
 $("#f-q").addEventListener("input", event => {
   state.q = event.target.value;
   state.listController?.abort(); ++state.listRequest; clearTimeout(state.scanTimer);
-  clearTimeout(searchTimer); searchTimer = setTimeout(() => loadList(), 300);
+  clearTimeout(searchTimer); searchTimer = setTimeout(() => { listEntrance = true; loadList(); }, 300);
 });
 $("#btn-refresh").addEventListener("click", () => {
   if (state.group === "usage") loadUsage(true);
@@ -2063,6 +2153,18 @@ $("#transfer-import").addEventListener("click", () => withTransfer(page => page.
 loadList();
 loadPlugins();
 loadUpdateBadge();
+/* ===== 3.6 · 点击水波、版本号 ===== */
+const RIPPLE_TARGETS = ".btn, .tbtn, .exp-btn, .chip, .mt-tab, .mt-chip, .appearance-option";
+document.addEventListener("pointerdown", event => {
+  if (event.button !== 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const el = event.target.closest(RIPPLE_TARGETS);
+  if (!el || el.disabled || el.classList.contains("disabled")) return;
+  const box = el.getBoundingClientRect(), size = Math.max(box.width, box.height) * 2.2;
+  const wave = document.createElement("span"); wave.className = "lq-ripple";
+  wave.style.cssText = `width:${size}px;height:${size}px;left:${event.clientX - box.left - size / 2}px;top:${event.clientY - box.top - size / 2}px`;
+  el.appendChild(wave); wave.addEventListener("animationend", () => wave.remove(), { once: true });
+});
+apiJson("/api/health").then(h => { if (h && h.version) $("#app-version").textContent = "v" + h.version; }).catch(() => {});
 </script>
 </body>
 </html>

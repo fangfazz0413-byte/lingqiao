@@ -236,7 +236,7 @@
       ${status.accounts.some(a => !a.label) ? `<details class="as-others"><summary>其它账号目录 ${status.accounts.filter(a => !a.label).length} 个（没起名字，多半是更早的账号）</summary><div class="as-accounts">${status.accounts.filter(a => !a.label).map(accountCard).join("")}</div></details>` : ""}
       <div class="as-card as-form">
         <label>从 <select id="as-src" aria-label="来源账号">${options(status.accounts, form.source, false)}</select></label>
-        <button class="btn as-mini" data-act="swap" title="对调来源和目标" aria-label="对调来源和目标">⇄</button>
+        <button class="btn as-mini" data-act="swap" title="对调来源和目标" aria-label="对调来源和目标"><svg class="ic" aria-hidden="true"><use href="#i-swap"></use></svg></button>
         <label>到 <select id="as-dst" aria-label="目标账号">${options(status.accounts, form.target, true)}</select></label>
         <label class="as-check"><input type="checkbox" id="as-both" ${form.both ? "checked" : ""}> 两边互相补齐</label>
         <label>范围 <select id="as-win" aria-label="时间范围">${Object.keys(WINDOW_TEXT).map(Number).sort((a, b) => (a || 1e9) - (b || 1e9)).map(h => `<option value="${h}"${Number(form.window) === h ? " selected" : ""}>${WINDOW_TEXT[h]}</option>`).join("")}</select></label>
