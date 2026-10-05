@@ -104,6 +104,40 @@ class WindowsOnlyTests(unittest.TestCase):
         windows_setup.wait_for_exit(child.pid)             # 已经退出：立刻返回
         self.assertLess(time.monotonic() - started, 2)
 
+    def test_shortcut_keeps_chinese_name_and_paths(self):
+        import ctypes
+        from ctypes import wintypes
+        import windows_setup as ws
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder) / '灵桥 测试'
+            base.mkdir()
+            target = base / '程序.exe'
+            target.write_bytes(b'')
+            link = base / '灵桥.lnk'
+            arguments = '-X utf8 "C:\\灵桥\\app\\server.py"'
+            ws.create_shortcut(link, target, arguments, base, ws.ICON, '灵桥 · 测试')
+            self.assertTrue(link.is_file())
+            ole32 = ctypes.OleDLL('ole32')
+            ole32.CoInitialize(None)
+            shell_link, persist = ctypes.c_void_p(), ctypes.c_void_p()
+            clsid, iid_link, iid_persist = (ws.GUID.parse(g) for g in (ws.CLSID_SHELL_LINK, ws.IID_SHELL_LINK_W, ws.IID_PERSIST_FILE))
+            try:
+                ole32.CoCreateInstance(ctypes.byref(clsid), None, 1, ctypes.byref(iid_link), ctypes.byref(shell_link))
+                ws._com(shell_link, 0, ctypes.HRESULT, ctypes.POINTER(ws.GUID), ctypes.POINTER(ctypes.c_void_p))(
+                    shell_link, ctypes.byref(iid_persist), ctypes.byref(persist))
+                ws._com(persist, 5, ctypes.HRESULT, wintypes.LPCWSTR, wintypes.DWORD)(persist, str(link), 0)       # Load
+                buffer = ctypes.create_unicode_buffer(1024)
+                ws._com(shell_link, 3, ctypes.HRESULT, wintypes.LPWSTR, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD)(
+                    shell_link, buffer, 1024, None, 0)                                                            # GetPath
+                self.assertEqual(Path(buffer.value).resolve(), target.resolve())
+                ws._com(shell_link, 10, ctypes.HRESULT, wintypes.LPWSTR, ctypes.c_int)(shell_link, buffer, 1024)  # GetArguments
+                self.assertEqual(buffer.value, arguments)
+            finally:
+                for obj in (persist, shell_link):
+                    if obj.value:
+                        ws._com(obj, 2, ctypes.c_ulong)(obj)
+                ole32.CoUninitialize()
+
     def test_updater_finds_git(self):
         import updater
         from types import SimpleNamespace

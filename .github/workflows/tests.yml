@@ -31,27 +31,30 @@ jobs:
           faulthandler.dump_traceback_later(1200, exit=True);
           sys.exit(not unittest.main(module=None, argv=['unittest', 'discover', '-s', 'tests', '-v'], exit=False).result.wasSuccessful())"
 
-      - name: Windows：安装并打开灵桥
+      - name: Windows：安装，再从快捷方式打开灵桥
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           python -X utf8 app\windows_setup.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          $links = @((Join-Path $pwd '灵桥.lnk'),
+                     (Join-Path ([Environment]::GetFolderPath('Desktop')) '灵桥.lnk'),
+                     (Join-Path ([Environment]::GetFolderPath('Programs')) '灵桥.lnk'))
+          foreach ($l in $links) { if (-not (Test-Path -LiteralPath $l)) { Write-Error "快捷方式没建成：$l"; exit 1 } }
           $home2 = Join-Path $env:RUNNER_TEMP 'home'
           New-Item -ItemType Directory -Force $home2 | Out-Null
           $env:BRIDGE_HOME = $home2
-          $p = Start-Process -FilePath .bridge\runtime\Scripts\python.exe -ArgumentList '-X', 'utf8', 'app\server.py' -PassThru `
-                 -RedirectStandardOutput $env:RUNNER_TEMP\out.txt -RedirectStandardError $env:RUNNER_TEMP\err.txt
+          Start-Process -FilePath $links[0]          # 和双击桌面上的「灵桥」一样
           $ok = $false
-          for ($i = 0; $i -lt 90 -and -not $p.HasExited; $i++) {
+          for ($i = 0; $i -lt 90; $i++) {
             Start-Sleep 1
             try { if ((Invoke-RestMethod http://127.0.0.1:8791/api/health).product -eq 'session-bridge') { $ok = $true; break } } catch {}
           }
           Start-Sleep 10
-          $alive = -not $p.HasExited
-          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-          Get-Content $env:RUNNER_TEMP\out.txt, $env:RUNNER_TEMP\err.txt, app\server.log -ErrorAction SilentlyContinue
-          Get-ChildItem *.lnk, (Join-Path ([Environment]::GetFolderPath('Desktop')) '*.lnk') -ErrorAction SilentlyContinue
+          $instance = Get-Content .bridge\instance.json -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+          $alive = $instance -and (Get-Process -Id $instance.pid -ErrorAction SilentlyContinue)
+          Get-Content app\server.log, app\startup-error.log -ErrorAction SilentlyContinue
+          if ($alive) { Stop-Process -Id $instance.pid -Force }
           if (-not $ok) { Write-Error '灵桥没起来'; exit 1 }
           if (-not $alive) { Write-Error '灵桥起来后又退出了'; exit 1 }
-          Write-Output '灵桥在 Windows 上起来了，窗口开着'
+          Write-Output '从快捷方式打开了灵桥，窗口开着'

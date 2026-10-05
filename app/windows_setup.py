@@ -7,10 +7,12 @@
 可以重复运行；不会动你的会话数据。
 """
 import argparse
+import ctypes
 import os
 from pathlib import Path
 import subprocess
 import sys
+import uuid
 
 REPO = Path(__file__).resolve().parents[1]
 RUNTIME = REPO / '.bridge' / 'runtime'
@@ -55,18 +57,71 @@ def webview2_installed():
     return False
 
 
+class GUID(ctypes.Structure):
+    _fields_ = [('raw', ctypes.c_ubyte * 16)]
+
+    @classmethod
+    def parse(cls, text):
+        return cls((ctypes.c_ubyte * 16).from_buffer_copy(uuid.UUID(text).bytes_le))
+
+
+CLSID_SHELL_LINK = '00021401-0000-0000-C000-000000000046'
+IID_SHELL_LINK_W = '000214F9-0000-0000-C000-000000000046'
+IID_PERSIST_FILE = '0000010B-0000-0000-C000-000000000046'
+FOLDERID_DESKTOP = 'B4BFCC3A-DB2C-424C-B029-7FE99A87C641'
+FOLDERID_PROGRAMS = 'A77F5D77-2E2B-44C3-A6A2-ABA601054A51'   # 开始菜单「程序」
+
+
+def _com(obj, index, restype, *argtypes):
+    """取 COM 对象虚表里第 index 个方法。"""
+    vtable = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+    return ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *argtypes)(vtable[index])
+
+
+def known_folder(folder_id):
+    """桌面、开始菜单的真实位置（可能被 OneDrive 挪走了）。"""
+    guid, path = GUID.parse(folder_id), ctypes.c_wchar_p()
+    ctypes.OleDLL('shell32').SHGetKnownFolderPath(ctypes.byref(guid), 0, None, ctypes.byref(path))
+    try:
+        return Path(path.value)
+    finally:
+        ctypes.windll.ole32.CoTaskMemFree(path)
+
+
+def create_shortcut(link, target, arguments, workdir, icon, description):
+    """用 IShellLinkW 建快捷方式：名字、路径里有中文也行（WScript.Shell 按系统代码页转，英文系统上中文会变成 ?）。"""
+    from ctypes import wintypes
+    ole32 = ctypes.OleDLL('ole32')
+    ole32.CoInitialize(None)
+    clsid, iid_link, iid_persist = GUID.parse(CLSID_SHELL_LINK), GUID.parse(IID_SHELL_LINK_W), GUID.parse(IID_PERSIST_FILE)
+    shell_link, persist = ctypes.c_void_p(), ctypes.c_void_p()
+    try:
+        ole32.CoCreateInstance(ctypes.byref(clsid), None, 1, ctypes.byref(iid_link), ctypes.byref(shell_link))  # 进程内
+        text = lambda index: _com(shell_link, index, ctypes.HRESULT, wintypes.LPCWSTR)  # noqa: E731
+        text(20)(shell_link, str(target))          # SetPath
+        text(11)(shell_link, arguments)            # SetArguments
+        text(9)(shell_link, str(workdir))          # SetWorkingDirectory
+        text(7)(shell_link, description)           # SetDescription
+        _com(shell_link, 17, ctypes.HRESULT, wintypes.LPCWSTR, ctypes.c_int)(shell_link, str(icon), 0)       # SetIconLocation
+        _com(shell_link, 0, ctypes.HRESULT, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p))(         # QueryInterface
+            shell_link, ctypes.byref(iid_persist), ctypes.byref(persist))
+        _com(persist, 6, ctypes.HRESULT, wintypes.LPCWSTR, wintypes.BOOL)(persist, str(link), True)          # IPersistFile::Save
+    finally:
+        for obj in (persist, shell_link):
+            if obj.value:
+                _com(obj, 2, ctypes.c_ulong)(obj)  # Release
+        ole32.CoUninitialize()
+
+
 def make_shortcuts():
-    """灵桥文件夹、桌面、开始菜单各放一个「灵桥」。路径都走环境变量传给 PowerShell，不拼进命令里。"""
-    script = ("$shell = New-Object -ComObject WScript.Shell; "
-              "foreach ($dir in @($env:LQ_REPO, [Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) { "
-              "if (-not $dir) { continue }; "
-              "$link = $shell.CreateShortcut((Join-Path $dir ($env:LQ_NAME + '.lnk'))); "
-              "$link.TargetPath = $env:LQ_TARGET; $link.Arguments = $env:LQ_ARGS; $link.WorkingDirectory = $env:LQ_REPO; "
-              "$link.IconLocation = $env:LQ_ICON; $link.Description = $env:LQ_DESC; $link.Save() }")
-    env = dict(os.environ, LQ_REPO=str(REPO), LQ_NAME=NAME, LQ_TARGET=str(RUNTIME_PYTHONW),
-               LQ_ARGS=f'-X utf8 "{SERVER}"', LQ_ICON=str(ICON), LQ_DESC='灵桥 · AI 会话工作台')
-    subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-                   env=env, check=True, stdin=subprocess.DEVNULL)
+    """灵桥文件夹、桌面、开始菜单各放一个「灵桥」。返回建好的位置。"""
+    folders = [REPO, known_folder(FOLDERID_DESKTOP), known_folder(FOLDERID_PROGRAMS)]
+    made = []
+    for folder in folders:
+        link = folder / f'{NAME}.lnk'
+        create_shortcut(link, RUNTIME_PYTHONW, f'-X utf8 "{SERVER}"', REPO, ICON, '灵桥 · AI 会话工作台')
+        made.append(link)
+    return made
 
 
 def launch():
@@ -103,8 +158,8 @@ def install():
     try:
         make_shortcuts()
         print('已在桌面、开始菜单和灵桥文件夹里放好「灵桥」快捷方式。')
-    except (OSError, subprocess.CalledProcessError):
-        print(f'快捷方式没建成，不影响使用：可以直接运行  "{RUNTIME_PYTHONW}" -X utf8 "{SERVER}"')
+    except OSError as exc:
+        print(f'快捷方式没建成（{exc}），不影响使用：可以直接运行  "{RUNTIME_PYTHONW}" -X utf8 "{SERVER}"')
     if not webview2_installed():
         print(f'\n提示：没找到 Microsoft Edge WebView2，灵桥的窗口要用它。到这里下载「常青版引导程序」装上：{WEBVIEW2_URL}')
     print('\n装好了。双击桌面上的「灵桥」打开。')
