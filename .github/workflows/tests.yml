@@ -12,6 +12,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       # 灵桥在 Windows 上以 UTF-8 模式运行（启动器会打开），测试也一样
       PYTHONUTF8: '1'
@@ -24,7 +25,11 @@ jobs:
         with:
           node-version: '22'
       - name: 跑测试
-        run: python -B -m unittest discover -s tests
+        # -v 逐个列出测试名；卡住超过 20 分钟就打印每个线程卡在哪一行再退出，不白等
+        run: >-
+          python -B -X faulthandler -c "import faulthandler, sys, unittest;
+          faulthandler.dump_traceback_later(1200, exit=True);
+          sys.exit(not unittest.main(module=None, argv=['unittest', 'discover', '-s', 'tests', '-v'], exit=False).result.wasSuccessful())"
 
       - name: Windows：安装并打开灵桥
         if: runner.os == 'Windows'
