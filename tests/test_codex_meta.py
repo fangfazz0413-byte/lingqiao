@@ -5,9 +5,12 @@
 import json
 import os
 from pathlib import Path
+from contextlib import closing
+import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -23,6 +26,50 @@ CODEX = next((p for p in ops.CODEX_CLI_CANDIDATES if os.access(p, os.X_OK)), Non
 GENUINE = {"id": "g-1", "originator": "Codex Desktop", "cli_version": "9.9.9", "model_provider": "provider-x", "source": "vscode",
            "creator_account_id": "acct-1", "creator_user_id": "user-1", "context_window": {"window_id": "w-1"},
            "base_instructions": {"text": "别的会话的指令，不能抄", "provenance": {"type": "model", "model": "m"}}, "cwd": "/secret/project"}
+
+
+def codex_app_server(codex_home, requests):
+    """在临时 CODEX_HOME 里开 Codex 的 app-server，像 Codex 窗口一样发请求；返回每个请求的回复。"""
+    import queue
+    import threading
+    proc = subprocess.Popen([CODEX, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            env={**os.environ, "CODEX_HOME": str(codex_home)}, text=True, bufsize=1)
+    answers, lines = {}, queue.Queue()
+    # 单独一个线程逐行读回复（不能用 select 配合带缓冲的读法，几行一起到时会漏掉）
+    threading.Thread(target=lambda: [lines.put(line) for line in proc.stdout], daemon=True).start()
+
+    def send(message):
+        proc.stdin.write(json.dumps(message) + "\n")
+        proc.stdin.flush()
+
+    def wait(request_id, timeout=90):
+        end = time.time() + timeout
+        while time.time() < end:
+            try:
+                line = lines.get(timeout=1)
+            except queue.Empty:
+                continue
+            try:
+                message = json.loads(line)
+            except ValueError:
+                continue
+            if message.get("id") == request_id:
+                return message
+        return {"error": {"message": "Codex app-server 没有回复"}}
+    try:
+        send({"id": 0, "method": "initialize", "params": {"clientInfo": {"name": "lingqiao-test", "version": "1"}}})
+        answers["initialize"] = wait(0)
+        send({"method": "initialized"})
+        for number, (method, params) in enumerate(requests, 1):
+            send({"id": number, "method": method, "params": params})
+            answers[method] = wait(number)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    return answers
 
 
 def write_rollout(root, day, sid, payload):
@@ -89,6 +136,48 @@ class CodexMetaTests(unittest.TestCase):
         output = result.stdout + result.stderr
         self.assertIn("0 failed", output, output)
         self.assertNotIn("does not start with session metadata", output)
+
+    @unittest.skipUnless(CODEX, "这台电脑没装 Codex")
+    def test_codex_app_server_reads_a_session_synced_by_lingqiao(self):
+        import server as s
+        home = Path(self.tmp.name) / "codex-home"
+        sessions = home / "sessions/2026/10/06"
+        sessions.mkdir(parents=True)
+        # 1. 让 Codex 自己建好数据库：放一条最简单的旧格式会话，跑它自带的迁移工具
+        probe = str(uuid.uuid4())
+        meta = {"id": probe, "session_id": probe, "timestamp": "2026-10-06T01:00:00.000Z", "cwd": "/tmp", "originator": "probe",
+                "cli_version": ops._codex_cli_version(), "source": "vscode", "model_provider": "openai",
+                "context_window": {"window_id": str(uuid.uuid4())}, "base_instructions": {"text": "probe"}}
+        lines = [{"timestamp": "2026-10-06T01:00:00.000Z", "ordinal": 0, "type": "session_meta", "payload": meta},
+                 {"timestamp": "2026-10-06T01:00:01.000Z", "ordinal": 1, "type": "response_item",
+                  "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]}}]
+        (sessions / f"rollout-2026-10-06T09-00-00-{probe}.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+        subprocess.run([CODEX, "migrate-rollouts", "--apply"], env={**os.environ, "CODEX_HOME": str(home)}, capture_output=True,
+                       timeout=120, stdin=subprocess.DEVNULL, check=True)
+        self.assertTrue((home / "thread_history_1.sqlite").is_file())
+        # 2. 灵桥按"同步到 Codex"的流程写一条：两轮，第一轮 AI 连着回了两次
+        sid = str(uuid.uuid4())
+        turns = [{"role": "user", "text": "第一问"}, {"role": "assistant", "text": "先看一下"}, {"role": "assistant", "text": "答案"},
+                 {"role": "user", "text": "第二问"}, {"role": "assistant", "text": "好的"}]
+        with mock.patch.multiple(s, CX_ROOT=home / "sessions", CX_STATE=home / "state_5.sqlite", CX_SQLITE=home / "thread_history_1.sqlite",
+                                 CX_INDEX=home / "session_index.jsonl", log=lambda message: None):
+            ops._create_rollout(s, sid, sessions / f"rollout-2026-10-06T10-00-00-{sid}.jsonl",
+                                {"dir": "/tmp", "title": "灵桥测试会话", "mtime": 1759716000}, turns)
+        with closing(sqlite3.connect(home / "thread_history_1.sqlite")) as c:
+            phases = [json.loads(x)["phase"] for (x,) in c.execute(
+                "SELECT item_json FROM thread_items WHERE thread_id=? AND item_type='agentMessage' ORDER BY rollout_ordinal", (sid,))]
+        self.assertEqual(phases, ["commentary", "final_answer", "final_answer"])
+        # 3. 让 Codex 像窗口那样读：会话信息、整条历史、分页列表、侧栏列表都要读得出
+        answers = codex_app_server(home, [("thread/read", {"threadId": sid, "includeTurns": True}),
+                                          ("thread/items/list", {"threadId": sid, "limit": 100}),
+                                          ("thread/list", {"modelProviders": [], "useStateDbOnly": True})])
+        for method, answer in answers.items():
+            self.assertIn("result", answer, f"{method}: {answer.get('error')}")
+        read_turns = answers["thread/read"]["result"]["thread"]["turns"]
+        self.assertEqual(len(read_turns), 2)
+        self.assertEqual(sum(len(t.get("items") or []) for t in read_turns), 5)
+        listed = answers["thread/list"]["result"].get("data") or []
+        self.assertIn(sid, [t.get("id") for t in listed])
 
 
 if __name__ == "__main__":

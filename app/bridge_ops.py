@@ -861,6 +861,53 @@ def codex_rollout_records(env, sid, meta, turns):
     return lines
 
 
+def codex_history_rows(lines):
+    """把新建的 rollout（逐行 bytes）换算成 Codex 历史库的行：[(这一轮的 thread_items, 这一轮的 thread_turns), ...] 和 projection。
+
+    agentMessage 的 phase 只能是 commentary（一轮里中间的回复）或 final_answer（这一轮最后的回答）。
+    Codex 0.160 起读到别的值（比如旧写法 final）就报 unknown variant，整条会话打不开。
+    """
+    infos = []; off = 0; tid = None
+    for raw in lines:
+        rec = json.loads(raw); ordinal = rec.get("ordinal", len(infos))
+        infos.append((ordinal, off, off + len(raw), rec)); off += len(raw)
+        if rec.get("type") == "session_meta": tid = rec["payload"]["id"]
+    if not tid: raise ValueError("迁移记录缺少 thread id")
+    groups = []
+    for ordinal, start, end, rec in infos:
+        p = rec.get("payload") or {}
+        if rec.get("type") != "response_item" or p.get("type") != "message": continue
+        role = p.get("role")
+        if role not in ("user", "assistant"): continue
+        if not groups or role == "user": groups.append([])
+        groups[-1].append((ordinal, start, end, rec))
+    stamp = lambda rec: int(datetime.fromisoformat(rec["timestamp"].replace("Z", "+00:00")).timestamp() * 1000)
+    out = []
+    for group in groups:
+        turn = str(uuid.uuid4()); first = None; last = None; items = []
+        final_index = max((i for i, g in enumerate(group) if g[3]["payload"]["role"] == "assistant"), default=None)
+        for index, (ordinal, start, end, rec) in enumerate(group):
+            p = rec["payload"]; item = "msg_" + uuid.uuid4().hex; ts = stamp(rec)
+            text = "\n".join(x.get("text", "") for x in p.get("content", []) if isinstance(x, dict))
+            if p["role"] == "user":
+                first = item; kind = "userMessage"
+                obj = {"type": kind, "id": item, "clientId": None, "content": [{"type": "text", "text": text, "text_elements": []}]}
+            else:
+                last = item; kind = "agentMessage"
+                obj = {"type": kind, "id": item, "text": text, "phase": "final_answer" if index == final_index else "commentary",
+                       "memoryCitation": None, "delivery": None, "questions": None}
+            items.append({"thread_id": tid, "turn_id": turn, "item_id": item, "rollout_ordinal": ordinal, "created_at_ms": ts,
+                          "item_json": json.dumps(obj, ensure_ascii=False), "item_type": kind, "updated_at_ordinal": ordinal,
+                          "started_at_ms": ts, "completed_at_ms": ts})
+        start_ms, end_ms = stamp(group[0][3]), stamp(group[-1][3])
+        out.append((items, {"thread_id": tid, "turn_id": turn, "rollout_ordinal": group[0][0], "status": "completed",
+                            "started_at": start_ms // 1000, "completed_at": end_ms // 1000, "duration_ms": end_ms - start_ms,
+                            "first_user_item_id": first, "final_agent_item_id": last, "rollout_byte_offset": group[0][1],
+                            "rollout_end_ordinal": group[-1][0], "rollout_end_byte_offset": group[-1][2]}))
+    projection = {"thread_id": tid, "next_rollout_byte_offset": off, "next_rollout_ordinal": max(x[0] for x in infos) + 1}
+    return out, projection
+
+
 def _create_rollout(env, sid, out, meta, turns):
     timestamp = float(meta.get("mtime", time.time()))
     lines = codex_rollout_records(env, sid, meta, turns)

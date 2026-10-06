@@ -147,6 +147,7 @@
 
 ## 版本
 
+- 3.6.2：同步到 Codex 的会话，AI 回复的类型（phase）按新版 Codex 的要求写成 commentary / final_answer（原来写的 final 会让 Codex 报 unknown variant，打不开）。新增测试：让 Codex 自带的 app-server 把灵桥写的会话完整读一遍。
 - 3.6.1：修复同步到 Codex 的会话在新版 Codex（0.160 起）打不开（"does not start with session metadata"）。会话第一行的格式字段改为照着本机 Codex 最近写的会话来写；装了 Codex 的电脑上，测试会请 Codex 自带的检查工具确认。
 - 3.6.0：支持 Windows（`install.bat`、凭据管理器、跨平台文件锁），GitHub Actions 在 macOS 和 Windows 上各跑一遍测试。
 - 3.5.0：拆出插件位（`plugins/`），加检查更新、本机提取图标；双账号备份目录改成可设置，默认放灵桥本地。

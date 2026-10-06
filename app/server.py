@@ -35,7 +35,7 @@ WB_DB = str(HOME / '.workbuddy/workbuddy.db')
 MT_LEGACY_CACHE = platform_paths.app_support(HOME) / 'Mtoken/cache.json'
 MT_CACHE = platform_paths.app_support(HOME) / 'LingqiaoUsage/cache.json'
 TOOLS = {'claude':'Claude Code','codex':'Codex','zcode':'ZCode','workbuddy':'WorkBuddy'}
-VERSION = '3.6.1'
+VERSION = '3.6.2'
 PORT = int(os.environ.get('BRIDGE_PORT','8791'))
 API_TOKEN = secrets.token_urlsafe(32)
 INSTANCE_ID = str(uuid.uuid4())
@@ -278,42 +278,19 @@ def steal_codex_meta_fields():
 
 
 def patch_codex_sqlite(rollout_path):
-    infos=[]; off=0; tid=None
+    # 每一行该怎么写由 bridge_ops.codex_history_rows 算（AI 回复的 phase 只能是 commentary / final_answer）
     with Path(rollout_path).open('rb') as stream:
-        for raw in stream:
-            rec=json.loads(raw); ordinal=rec.get('ordinal',len(infos))
-            infos.append((ordinal,off,off+len(raw),rec));off+=len(raw)
-            if rec.get('type')=='session_meta': tid=rec['payload']['id']
-    if not tid: raise ValueError('迁移记录缺少 thread id')
-    groups=[]
-    for ordinal,start,end,rec in infos:
-        p=rec.get('payload') or {}
-        if rec.get('type')!='response_item' or p.get('type')!='message': continue
-        role=p.get('role')
-        if role not in ('user','assistant'): continue
-        if not groups or role=='user': groups.append([])
-        groups[-1].append((ordinal,start,end,rec))
+        turns,projection=bridge_ops.codex_history_rows(list(stream))
     with sqlite3.connect(CX_SQLITE,timeout=30,factory=session_reader.ClosingConnection) as c:
         c.execute('PRAGMA foreign_keys=ON'); c.execute('BEGIN IMMEDIATE')
         def insert(table,vals):
             cols={r[1] for r in c.execute('PRAGMA table_info('+table+')')}
             vals={k:v for k,v in vals.items() if k in cols}
             c.execute('INSERT INTO '+table+' ('+','.join(vals)+') VALUES ('+','.join('?' for _ in vals)+')',list(vals.values()))
-        for group in groups:
-            turn=str(uuid.uuid4()); first=None; last=None
-            for ordinal,start,end,rec in group:
-                p=rec['payload']; role=p['role']; item='msg_'+uuid.uuid4().hex
-                text='\n'.join(x.get('text','') for x in p.get('content',[]) if isinstance(x,dict))
-                ts=int(datetime.fromisoformat(rec['timestamp'].replace('Z','+00:00')).timestamp()*1000)
-                if role=='user':
-                    first=item; kind='userMessage'; obj={'type':kind,'id':item,'clientId':None,'content':[{'type':'text','text':text,'text_elements':[]}]}
-                else:
-                    last=item;kind='agentMessage';obj={'type':kind,'id':item,'text':text,'phase':'final','memoryCitation':None,'delivery':None,'questions':None}
-                insert('thread_items',{'thread_id':tid,'turn_id':turn,'item_id':item,'rollout_ordinal':ordinal,'created_at_ms':ts,'item_json':json.dumps(obj,ensure_ascii=False),'item_type':kind,'updated_at_ordinal':ordinal,'started_at_ms':ts,'completed_at_ms':ts})
-            start_ms=int(datetime.fromisoformat(group[0][3]['timestamp'].replace('Z','+00:00')).timestamp()*1000)
-            end_ms=int(datetime.fromisoformat(group[-1][3]['timestamp'].replace('Z','+00:00')).timestamp()*1000)
-            insert('thread_turns',{'thread_id':tid,'turn_id':turn,'rollout_ordinal':group[0][0],'status':'completed','started_at':start_ms//1000,'completed_at':end_ms//1000,'duration_ms':end_ms-start_ms,'first_user_item_id':first,'final_agent_item_id':last,'rollout_byte_offset':group[0][1],'rollout_end_ordinal':group[-1][0],'rollout_end_byte_offset':group[-1][2]})
-        insert('thread_history_projection_state',{'thread_id':tid,'next_rollout_byte_offset':off,'next_rollout_ordinal':max(x[0] for x in infos)+1})
+        for items,turn in turns:
+            for item in items: insert('thread_items',item)
+            insert('thread_turns',turn)
+        insert('thread_history_projection_state',projection)
 
 
 def worst_remain():
