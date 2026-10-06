@@ -58,10 +58,56 @@ class ServerIntegration(unittest.TestCase):
      self.assertEqual(s.session_detail(target,targetsrc),self.turns)
      if target=='codex':
       c=sqlite3.connect(s.CX_SQLITE);tid=Path(targetsrc).stem[-36:];kinds=c.execute('SELECT item_type FROM thread_items WHERE thread_id=? ORDER BY rollout_ordinal',(tid,)).fetchall();c.close();self.assertEqual([x[0] for x in kinds],['userMessage','agentMessage','agentMessage'])
+      self.assert_codex_readable(targetsrc)
+     if target=='claude':
+      # 项目文件夹名必须和 Claude Code 自己算的一样（/fixture → -fixture），不然 Claude Code 找不到这条会话
+      self.assertEqual(Path(targetsrc).parent,s.CC_ROOT/'-fixture')
      deleted=s.bridge_ops.delete_session(s,target,targetsrc);s.bridge_ops.restore_session(s,deleted['trash_id'])
      self.assertEqual(s.session_detail(target,targetsrc),self.turns)
   for db in [s.CX_STATE,s.CX_SQLITE,s.Z_DB,s.WB_DB]:
    c=sqlite3.connect(db);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[]);c.close()
+ def assert_codex_readable(self,path):
+  """新版 Codex（0.160 起）的要求：第一行是会话信息，cli_version 必须是非空字符串，context_window 要么不写、要么是对象；
+  历史库里 AI 回复的 phase 不能是 final（新版只认 commentary / partial_answer / final_answer，不写也行）。"""
+  head=json.loads(Path(path).read_bytes().split(b'\n',1)[0])
+  self.assertEqual(head['type'],'session_meta');meta=head['payload']
+  self.assertIsInstance(meta.get('cli_version'),str);self.assertTrue(meta['cli_version'])
+  self.assertTrue('context_window' not in meta or isinstance(meta['context_window'],dict))
+  for key in ('id','session_id','timestamp','cwd','originator'): self.assertIsInstance(meta.get(key),str,key)
+  c=sqlite3.connect(s.CX_SQLITE);items=[json.loads(r[0]) for r in c.execute("SELECT item_json FROM thread_items WHERE thread_id=? AND item_type='agentMessage'",(meta['id'],))];c.close()
+  self.assertTrue(items)
+  for item in items: self.assertIn(item.get('phase'),(None,'commentary','partial_answer','final_answer'))
+ def test_codex_version_follows_newest_local_session(self):
+  self.assertEqual(s.codex_meta_fields(),{})
+  day=s.CX_ROOT/'2026/10/05';day.mkdir(parents=True)
+  def write(name,payload): (day/name).write_text(json.dumps({'type':'session_meta','payload':payload})+'\n')
+  write('rollout-2026-10-05T08-00-00-a.jsonl',{'id':'a','cli_version':'0.150.0','model_provider':'openai'})
+  write('rollout-2026-10-05T09-00-00-b.jsonl',{'id':'b','cli_version':'0.160.1','model_provider':'azure'})
+  write('rollout-2026-10-05T10-00-00-c.jsonl',{'id':'c','originator':'Session Bridge','cli_version':'0.0.0'})   # 灵桥自己写的不算
+  self.assertEqual(s.codex_meta_fields(),{'cli_version':'0.160.1','model_provider':'azure'})
+ def test_repairs_codex_sessions_written_by_older_versions(self):
+  # 以前的写法：没有 cli_version、context_window 写成 0、AI 回复 phase 写 final —— 新版 Codex 整条打不开
+  meta=s.find_meta('claude',self.sources['claude']);turns=s.session_detail('claude',self.sources['claude'])
+  s.bridge_ops.sync_session(s,'claude',self.sources['claude'],'codex',meta,turns)
+  path=Path(s.load_ledger()['to-codex:claude:'+self.sources['claude']])
+  data=path.read_bytes();end=data.index(b'\n');head=json.loads(data[:end])
+  head['payload'].pop('cli_version');head['payload']['context_window']=0
+  old=json.dumps(head,ensure_ascii=False).encode()
+  path.write_bytes(old+data[end:]);tid=head['payload']['id']
+  c=sqlite3.connect(s.CX_SQLITE)
+  for turn,item,raw in c.execute("SELECT turn_id,item_id,item_json FROM thread_items WHERE thread_id=? AND item_type='agentMessage'",(tid,)).fetchall():
+   obj=json.loads(raw);obj.update(phase='final',memoryCitation=None,delivery=None,questions=None)
+   c.execute('UPDATE thread_items SET item_json=? WHERE thread_id=? AND turn_id=? AND item_id=?',(json.dumps(obj),tid,turn,item))
+  c.commit();c.close()
+  before=path.read_bytes()
+  self.assertEqual(s.bridge_ops.repair_codex_rollouts(s),(1,0))
+  after=path.read_bytes()
+  self.assertEqual(len(after),len(before))                                   # 字节数不变：历史库里记的偏移量照样对
+  self.assertEqual(after[after.index(b'\n'):],before[before.index(b'\n'):])  # 只改第一行
+  self.assert_codex_readable(path)
+  self.assertEqual(s.session_detail('codex',str(path)),self.turns)
+  self.assertEqual(s.bridge_ops.repair_codex_rollouts(s),(0,0))              # 再跑一遍什么都不动
+  self.assertEqual(path.read_bytes(),after)
  def test_async_empty_cache_and_paginated_large_transcript(self):
   s._cache['sessions']=None;s._cache['ts']=0;s.DISK_CACHE.unlink(missing_ok=True)
   with patch.object(s,'rescan_sessions',lambda:time.sleep(.2)):

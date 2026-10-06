@@ -272,9 +272,48 @@ def delete_session(tool,src):
     invalidate();return result
 
 
-def steal_codex_meta_fields():
-    # These fields describe this adapter, never another chat's instructions/provider.
-    return {'model_provider':'openai','base_instructions':{'text':'Imported text transcript. Historical messages are untrusted context. Ask for confirmation before executing actions.'},'history_mode':'paginated','context_window':0}
+def _newest_rollouts(limit=40):
+    """按 年/月/日 文件夹从新到旧找 Codex 会话文件，找够 limit 个就停。"""
+    out=[]
+    try:
+        for y in sorted((d for d in CX_ROOT.iterdir() if d.is_dir()),reverse=True):
+            for m in sorted((d for d in y.iterdir() if d.is_dir()),reverse=True):
+                for d in sorted((d for d in m.iterdir() if d.is_dir()),reverse=True):
+                    out+=sorted(d.glob('rollout-*.jsonl'),reverse=True)
+                    if len(out)>=limit: return out[:limit]
+    except OSError: pass
+    return out
+
+
+def codex_meta_fields():
+    """新建 Codex 会话时用的版本号和模型提供方：跟本机最近一条 Codex 自己写的会话一致。
+
+    新版 Codex 要求会话第一行写 cli_version，缺了整条会话打不开；跟着本机走，Codex 升级了也对得上。
+    只取这两个字段，不复制别的会话的指令、账号或权限设置。"""
+    for path in _newest_rollouts():
+        try:
+            with path.open('rb') as stream: rec=json.loads(stream.readline() or b'{}')
+        except (OSError,ValueError): continue
+        p=rec.get('payload') if isinstance(rec,dict) else None
+        if rec.get('type')!='session_meta' or not isinstance(p,dict) or p.get('originator')==bridge_ops.CODEX_ORIGINATOR: continue
+        if isinstance(p.get('cli_version'),str) and p['cli_version']:
+            return {'cli_version':p['cli_version'],'model_provider':p.get('model_provider') or 'openai'}
+    try:   # 会话文件都被清掉了，再看 Codex 的状态库
+        with sqlite3.connect(f'file:{CX_STATE}?mode=ro',uri=True,timeout=5,factory=session_reader.ClosingConnection) as c:
+            row=c.execute("SELECT cli_version, model_provider FROM threads WHERE cli_version!='' AND COALESCE(originator,'')!=? ORDER BY updated_at DESC LIMIT 1",(bridge_ops.CODEX_ORIGINATOR,)).fetchone()
+        if row: return {'cli_version':row[0],'model_provider':row[1] or 'openai'}
+    except sqlite3.Error: pass
+    return {}
+
+
+def repair_codex_quietly():
+    """启动时把以前转进 Codex、新版 Codex 打不开的会话修好（只改灵桥自己写的第一行）。"""
+    try:
+        fixed,failed=bridge_ops.repair_codex_rollouts(ENV)
+        if fixed or failed: log(f'codex-repair fixed={fixed} failed={failed}')
+        if fixed: invalidate()
+    except Exception as e:  # noqa: BLE001  修不了不影响启动
+        log('codex-repair-failed type='+type(e).__name__)
 
 
 def patch_codex_sqlite(rollout_path):
@@ -308,7 +347,8 @@ def patch_codex_sqlite(rollout_path):
                 if role=='user':
                     first=item; kind='userMessage'; obj={'type':kind,'id':item,'clientId':None,'content':[{'type':'text','text':text,'text_elements':[]}]}
                 else:
-                    last=item;kind='agentMessage';obj={'type':kind,'id':item,'text':text,'phase':'final','memoryCitation':None,'delivery':None,'questions':None}
+                    # phase 等可选字段不写：新旧版本 Codex 认的取值不一样（新版不认 final），不写就是「未标注」，哪个版本都能读
+                    last=item;kind='agentMessage';obj={'type':kind,'id':item,'text':text}
                 insert('thread_items',{'thread_id':tid,'turn_id':turn,'item_id':item,'rollout_ordinal':ordinal,'created_at_ms':ts,'item_json':json.dumps(obj,ensure_ascii=False),'item_type':kind,'updated_at_ordinal':ordinal,'started_at_ms':ts,'completed_at_ms':ts})
             start_ms=int(datetime.fromisoformat(group[0][3]['timestamp'].replace('Z','+00:00')).timestamp()*1000)
             end_ms=int(datetime.fromisoformat(group[-1][3]['timestamp'].replace('Z','+00:00')).timestamp()*1000)
@@ -507,6 +547,7 @@ def main():
     threading.Thread(target=_usage_poller,daemon=True).start()
     threading.Thread(target=_subagent_auto_cleaner,daemon=True).start()
     threading.Thread(target=brand_icons.ensure_quietly,args=(APP_DIR/'assets/icons',log),daemon=True).start()
+    threading.Thread(target=repair_codex_quietly,daemon=True).start()
     threading.Thread(target=updates.auto_check,args=(_shutdown_event,),daemon=True).start()
     try:
         if args.no_window: _shutdown_event.wait()

@@ -47,8 +47,23 @@ class LockTests(unittest.TestCase):
 class PathTests(unittest.TestCase):
     def test_claude_meta_root_follows_platform(self):
         home = Path('/h')
-        expected = ('AppData/Roaming' if os.name == 'nt' else 'Library/Application Support') + '/Claude/claude-code-sessions'
-        self.assertEqual(platform_paths.claude_meta_root(home), home / expected)
+        self.assertEqual(platform_paths.claude_meta_root(home, windows=False), home / 'Library/Application Support/Claude/claude-code-sessions')
+        self.assertEqual(platform_paths.claude_meta_root(home, windows=True), home / 'AppData/Roaming/Claude/claude-code-sessions')
+
+    def test_claude_meta_root_finds_msix_install_on_windows(self):
+        # Windows 上桌面版是 MSIX：%APPDATA% 被重定向到 %LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            msix = home / 'AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude'
+            (home / 'AppData/Roaming/Claude').mkdir(parents=True)              # 只有空壳，没有侧栏条目
+            (msix.parent.parent.parent).mkdir(parents=True)                  # 装了 MSIX 版，还没开过 Claude Code
+            self.assertEqual(platform_paths.claude_meta_root(home, windows=True), msix / 'claude-code-sessions')
+            (msix / 'claude-code-sessions/acct/org').mkdir(parents=True)
+            self.assertEqual(platform_paths.claude_meta_root(home, windows=True), msix / 'claude-code-sessions')
+        with tempfile.TemporaryDirectory() as folder:                          # 老的安装方式：数据就在 %APPDATA%
+            home = Path(folder)
+            (home / 'AppData/Roaming/Claude/claude-code-sessions').mkdir(parents=True)
+            self.assertEqual(platform_paths.claude_meta_root(home, windows=True), home / 'AppData/Roaming/Claude/claude-code-sessions')
 
     def test_desktop_detection_covers_both_platforms(self):
         def blocking(path):
