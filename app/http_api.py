@@ -60,7 +60,9 @@ def make_handler(env):
                     name='mtoken-panel.html' if u.path.startswith('/mtoken-panel') else 'index.html'
                     html=(env.APP_DIR/name).read_text()
                     boot='<script>window.BRIDGE_TOKEN='+json.dumps(env.API_TOKEN)+';const bridgeFetch=window.fetch.bind(window);window.fetch=(input,options={})=>{const url=new URL(typeof input==="string"?input:input.url,location.href);const h=new Headers(options.headers||{});if(url.origin===location.origin&&url.pathname.startsWith("/api/"))h.set("X-Bridge-Token",window.BRIDGE_TOKEN);return bridgeFetch(input,{...options,headers:h});};history.replaceState(null,"",location.pathname);</script>'
-                    self._send(200,html.replace('<head>','<head>'+boot,1),'text/html; charset=utf-8')
+                    # 左下角版本号由这里填（以前写死在页面里，更新后还显示旧版本）；只留数字、点和字母，不会混进别的东西
+                    version=''.join(c for c in str(env.VERSION) if c.isalnum() or c in '.-+')
+                    self._send(200,html.replace('<head>','<head>'+boot,1).replace('__LINGQIAO_VERSION__',version),'text/html; charset=utf-8')
                 elif u.path=='/api/sessions':
                     sessions=env.collect_sessions(q.get('refresh',['0'])[0]=='1')
                     days=int(q.get('days',['0'])[0]); minimum=float(q.get('min_mb',['0'])[0]); tool=q.get('tool',['all'])[0]; kw=q.get('q',[''])[0].strip().lower()

@@ -99,6 +99,7 @@ class ServerIntegration(unittest.TestCase):
     code,body,_=request('/api/cleanup/commit',auth,'POST',json.dumps({'plan_id':plan_id,'confirm':False}));self.assertEqual(code,400)
     self.assertTrue(Path(self.sources['claude']).exists())
     code,body,_=request('/?token='+s.API_TOKEN);self.assertEqual(code,200);self.assertIn(b'window.BRIDGE_TOKEN',body)
+    self.assertIn(('本机四工具会话 · v'+s.VERSION).encode(),body);self.assertNotIn(b'__LINGQIAO_VERSION__',body)  # 左下角显示真实版本号
    finally:httpd.shutdown();httpd.server_close()
  def test_correct_sizes_after_update_delete(self):
   before=s.session_reader.db_scan(s,'zcode')[0]['size']
