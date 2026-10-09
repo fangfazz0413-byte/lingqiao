@@ -51,7 +51,7 @@ const sent = i => JSON.parse(calls[i].options.body);  // 在 vm 自己的 realm 
 const plan = { source: A, source_label: '个人账号', target: B, target_label: '团队账号', target_org: '22222222-x', window_hours: 24,
   counts: { copy: 1, update: 1, already: 2, out_of_window: 3, unreadable: 0, no_transcript: 1, deleted: 1, no_id: 0, duplicate: 0, conflict: 0, changed: 0, error: 0 },
   copy: [{ file: 'local_1.json', title: '<img src=x onerror=alert(1)>', last: 1759490000000 }],
-  update: [{ title_old: '旧标题', title_new: '新<b>标题</b>' }], skipped: [{ title: '不在本机', reason_text: '聊天记录不在本机' }], already: [] };
+  update: [{ file: 'local_2.json', title_old: '旧标题', title_new: '新<b>标题</b>' }], skipped: [{ title: '不在本机', reason_text: '聊天记录不在本机' }], already: [] };
 '''
 
 
@@ -114,7 +114,7 @@ class AccountsFrontendTests(unittest.TestCase):
               ? { ok: true, nothing: false, run: { id: 'r', totals: { copied: 1, updated: 1, failed: 0 }, results: [], backup: {} } } : status);
             result = await T.requestSync({ confirm: async () => true });
             assert.equal(calls[0].url, '/api/accounts/sync'); assert.equal(calls[0].options.method, 'POST');
-            assert.deepEqual(sent(0), { source: A, target: B, window_hours: 24, both: true, confirm: true });
+            assert.deepEqual(sent(0), { source: A, target: B, window_hours: 24, both: true, confirm: true, pick: { [A + '>' + B]: ['local_1.json', 'local_2.json'] } });
             assert.equal(calls[0].options.headers.get('X-Bridge-Token'), 'fixture-token'); assert.doesNotMatch(calls[0].url, /token/);
             assert.equal(calls[1].url, '/api/accounts/status');
             assert.match(toasts.at(-1)[0], /同步好了：复制 1 条、刷新标题 1 个/);
@@ -140,6 +140,67 @@ class AccountsFrontendTests(unittest.TestCase):
             assert.match(toasts.at(-1)[0], /撤销没做：Claude 桌面版还开着/);
           })()
         ''')
+
+    def test_pick_sessions_before_sync(self):
+        self.run_js(r"""
+          (async () => {
+            const S = T.state; S.status = status; S.form = T.defaultForm(status);
+            S.preview = { plans: [plan], nothing: false, backup: status.backup }; S.previewKey = T.planKey(S.form); S.unpicked = {};
+            const key = A + '>' + B;
+            // 默认全勾：列表里每条都有勾选框
+            let html = T.planCard(plan);
+            assert.match(html, /已勾 2 \/ 2/); assert.equal((html.match(/class="as-pick-box"/g) || []).length, 2);
+            assert.equal((html.match(/ checked>/g) || []).length, 2); assert.match(html, /data-act="pick-none"/);
+            assert.deepEqual(T.pickFor([plan], S.unpicked), { [key]: ['local_1.json', 'local_2.json'] });
+            // 去掉一条：只发勾上的；确认框里写明没勾的不动
+            T.onPick({ dataset: { pick: key, file: 'local_2.json' }, checked: false });
+            assert.deepEqual(T.pickedCounts(plan, S.unpicked), { copy: 1, update: 0 });
+            assert.equal((T.planCard(plan).match(/ checked>/g) || []).length, 1);
+            const asked = [];
+            setResponder(async url => url === '/api/accounts/sync'
+              ? { ok: true, nothing: false, run: { id: 'r', totals: { copied: 1, updated: 0, failed: 0 }, results: [], backup: {} } } : status);
+            await T.requestSync({ confirm: async options => { asked.push(options); return true; } });
+            assert.match(asked[0].body, /复制 <b>1<\/b> 条，刷新标题 <b>0<\/b> 个（没勾的 1 条不动）/);
+            assert.deepEqual(sent(0).pick, { [key]: ['local_1.json'] });
+            assert.deepEqual(S.unpicked, {});  // 同步后重新预览，勾选也重新开始
+            // 全不选：不能同步，提示去勾
+            S.preview = { plans: [plan], nothing: false }; S.previewKey = T.planKey(S.form);
+            T.pickAll(key, false);
+            assert.equal(T.canSync(S), false); assert.match(T.syncBlockReason(S), /一条都没勾/);
+            const before = calls.length;
+            assert.equal(await T.requestSync({ confirm: async () => true }), null); assert.equal(calls.length, before);
+            T.pickAll(key, true); assert.equal(T.canSync(S), true);
+            // 文件名进属性也要转义
+            assert.doesNotMatch(T.planCard({ ...plan, copy: [{ file: '"><img src=x>', title: 't', last: 1 }] }), /<img/);
+          })()
+        """)
+
+    def test_hidden_accounts_are_left_out(self):
+        self.run_js(r"""
+          (async () => {
+            const hiddenStatus = { ...status, accounts: status.accounts.map(a => a.id === A ? { ...a, hidden: true, recent: false } : a.id === B ? { ...a, recent: true } : a) };
+            // 隐藏的不进下拉框、不当默认来源
+            assert.doesNotMatch(T.options(hiddenStatus.accounts, '', false), new RegExp(A));
+            assert.match(T.options(hiddenStatus.accounts, '', false), new RegExp(C));
+            assert.notEqual(T.defaultForm(hiddenStatus).source, A); assert.notEqual(T.defaultForm(hiddenStatus).target, A);
+            assert.deepEqual(T.visible(hiddenStatus.accounts).map(a => a.id), [B, C, D]);
+            // 卡片上的按钮：没隐藏的是「隐藏」，隐藏的是「取消隐藏」，放在「已隐藏的账号」里
+            assert.match(T.accountCard(status.accounts[2]), /data-act="hide" data-account="cccccccc/);
+            const section = T.hiddenSection(hiddenStatus.accounts);
+            assert.match(section, /已隐藏的账号 1 个/); assert.match(section, /data-act="unhide" data-account="aaaaaaaa/);
+            assert.equal(T.hiddenSection(status.accounts), '');
+            // 隐藏正在用的来源账号：表单换成别的账号，预览作废
+            const S = T.state; S.status = status; S.form = { source: A, target: B, window: 24, both: true };
+            S.preview = { plans: [plan], nothing: false }; S.previewKey = T.planKey(S.form);
+            setResponder(async () => hiddenStatus);
+            await T.requestHide(A, true);
+            assert.equal(calls[0].url, '/api/accounts/hide'); assert.deepEqual(sent(0), { account: A, hidden: true });
+            assert.notEqual(S.form.source, A); assert.equal(S.preview, null);
+            assert.match(toasts.at(-1)[0], /已隐藏「个人账号」：会话文件都没动/);
+            setResponder(async () => ({ __status: 400, body: { error: '隐藏参数不对' } }));
+            assert.equal(await T.requestHide(C, true), null); assert.match(toasts.at(-1)[0], /隐藏没做：隐藏参数不对/);
+          })()
+        """)
 
     def test_index_hooks(self):
         html = (ROOT / "app/index.html").read_text(encoding="utf-8")

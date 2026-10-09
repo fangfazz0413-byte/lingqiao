@@ -265,7 +265,7 @@ def _fk_check(c, snap):
 
 
 def _delete_rows(snap):
-    if state.database_identity(snap["path"])["key"] != snap["identity"]["key"]:
+    if not state.same_database(snap["identity"], state.database_identity(snap["path"])):
         raise ValueError("目标数据库已更换")
     with _conn(snap["path"]) as c:
         c.execute("BEGIN IMMEDIATE")
@@ -291,7 +291,7 @@ def _delete_rows(snap):
 
 
 def _restore_rows(snap, *, strict=True):
-    if state.database_identity(snap["path"])["key"] != snap["identity"]["key"]:
+    if not state.same_database(snap["identity"], state.database_identity(snap["path"])):
         raise ValueError("目标数据库已更换")
     with _conn(snap["path"]) as c:
         c.execute("BEGIN IMMEDIATE")
@@ -641,7 +641,7 @@ def _restore_preflight(env, opdir, j):
             if original.exists() and hashlib.sha256(original.read_bytes()).hexdigest() != f["sha256"]:
                 raise ValueError("删除后原生进程仍写入了会话，已保留原件，请人工复核")
     for db in j["databases"]:
-        if state.database_identity(db["path"])["key"] != db["identity"]["key"]:
+        if not state.same_database(db["identity"], state.database_identity(db["path"])):
             raise ValueError("目标数据库已更换，拒绝自动恢复")
         with _conn(db["path"]) as c:
             _check_db(c, db)
@@ -677,7 +677,7 @@ def _pending_delete_preflight(env, opdir, j):
         if p.exists() and p.read_bytes() != raw:
             raise ValueError("会话文件在中断后变化，保留而不覆盖")
     for db in j["databases"]:
-        if state.database_identity(db["path"])["key"] != db["identity"]["key"]:
+        if not state.same_database(db["identity"], state.database_identity(db["path"])):
             raise ValueError("目标数据库已更换")
         with _conn(db["path"]) as c:
             _check_db(c, db)
@@ -1127,8 +1127,10 @@ def recover_pending_operations(env):
                         if any(Path(f).exists() for f in j["created_files"]) or any(t["rows"] for d in expected for t in d["tables"].values()):
                             raise ValueError("目标尚未形成完整快照，保留材料等待复核")
                     else:
+                        # 当场撤回已经把库记录删掉、只是后面记账那步出错时，库里这条会话什么都不剩，不用再删。
+                        already_gone = not any(t["rows"] for d in expected for t in d["tables"].values())
                         # Preflight all resources before removing any of them.
-                        if [d["tables"] for d in expected] != [d["tables"] for d in created]:
+                        if not already_gone and [d["tables"] for d in expected] != [d["tables"] for d in created]:
                             raise ValueError("同步数据库记录在中断后变化，保留材料等待复核")
                         roots = {"claude": [env.CC_ROOT, _metadata_root(env)], "codex": [env.CX_ROOT],
                                  "workbuddy": [env.WB_ROOT], "zcode": []}[j["target"]]
@@ -1138,7 +1140,7 @@ def recover_pending_operations(env):
                                 raise ValueError("恢复目标路径越界")
                             if p.exists() and hashlib.sha256(p.read_bytes()).hexdigest() != digest:
                                 raise ValueError("同步目标在中断后变化，保留而不覆盖")
-                        for db in created:
+                        for db in ([] if already_gone else created):
                             _delete_rows(db)
                         for f, digest in j.get("created_file_hashes", {}).items():
                             p = Path(f)

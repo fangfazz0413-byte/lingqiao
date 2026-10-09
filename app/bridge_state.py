@@ -143,9 +143,22 @@ def database_identity(db_path):
     path = Path(db_path).expanduser().resolve(strict=True)
     stat = path.stat()
     identity = {"path": str(path), "device": stat.st_dev, "inode": stat.st_ino}
-    identity["key"] = hashlib.sha256(
-        json.dumps(identity, sort_keys=True).encode("utf-8")).hexdigest()[:24]
+    # key 只用路径和 inode：device 编号 macOS 每次开机（或插拔外接盘）都可能重新分配，同一个文件也会变。
+    identity["key"] = hashlib.sha256(json.dumps({"path": identity["path"], "inode": identity["inode"]},
+                                                sort_keys=True).encode("utf-8")).hexdigest()[:24]
     return identity
+
+
+def same_database(stored, current):
+    """记下的身份和现在的是不是同一个数据库文件：路径和 inode 都一样就是。
+
+    不比 device：2026-10 实测，Mac 重启后 ZCode 数据库的 device 从 16777230 变成 16777232，
+    路径和 inode 都没变，按 device 比就把同一个文件当成"换了数据库"，同步和回收站恢复都被拒。
+    文件真被换掉（删了重建、从备份拷回来）时 inode 会变，照样拒绝。
+    """
+    return (isinstance(stored, dict) and isinstance(current, dict)
+            and stored.get("path") == current.get("path")
+            and stored.get("inode") is not None and stored.get("inode") == current.get("inode"))
 
 
 def zcode_state_paths(db_path, real_db, bridge_dir):
@@ -201,6 +214,9 @@ def load_zcode_manifest(path, db_path):
     if not isinstance(raw, dict) or not isinstance(raw.get("sessions"), list):
         raise ValueError("Invalid ZCode manifest")
     stored = raw.get("database")
+    if stored != identity and same_database(stored, identity):
+        # 同一个文件，只是开机后 device 编号变了：换成现在的身份，下次写清单时一起存下。
+        return {**raw, "database": identity}
     if stored != identity:
         # Never infer that an old 'real' manifest belongs to an arbitrary --db.
         if not raw["sessions"] and stored is None:

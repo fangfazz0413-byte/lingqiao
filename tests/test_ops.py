@@ -5,6 +5,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from types import SimpleNamespace
 from contextlib import contextmanager
@@ -179,4 +180,56 @@ class Operations(unittest.TestCase):
         self.assertEqual(bridge_state.provenance_records(self.env.PROVENANCE)['target']['status'],'active')
 
 
-if __name__=='__main__':unittest.main()
+    def test_zcode_device_renumbering_after_reboot_keeps_sync_and_restore(self):
+        # Mac 重启后同一个数据库文件的 device 编号会变（2026-10 实测 16777230→16777232），路径和 inode 不变：
+        # 同步到 ZCode、从回收站恢复都要照常。
+        sid='sess_source1111'
+        with dbconn(self.env.Z_DB) as c:
+            c.execute('INSERT INTO session VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',(sid,'proj','slug','/fixture','/fixture','title','1','{}',1,1,'interactive','first_input','trace'))
+        manifest=self.env.BRIDGE/'zcode-injected-manifest.json'
+        stale=dict(bridge_state.database_identity(self.env.Z_DB)); stale['device']+=2
+        bridge_state.atomic_json(manifest,{'version':2,'database':stale,'sessions':[]})
+        r=ops.sync_session(self.env,'claude',self.source('claude'),'zcode',{'dir':'/fixture','title':'Title','mtime':1234567890},
+                           [{'role':'user','text':'hello'},{'role':'assistant','text':'world'}])
+        self.assertFalse(r['already'])
+        saved=bridge_state.load_json(manifest)
+        self.assertEqual(saved['database'],bridge_state.database_identity(self.env.Z_DB))
+        self.assertEqual(len(saved['sessions']),1)
+        deleted=ops.delete_session(self.env,'zcode','zcode:'+sid)
+        journal=Path(deleted['trash'])/'journal.json'
+        j=json.loads(journal.read_text())
+        for d in j['databases']: d['identity'].update(device=d['identity']['device']+2,key='written-by-older-version')
+        bridge_state.atomic_json(journal,j)
+        ops.restore_session(self.env,deleted['trash_id'])
+        with dbconn(self.env.Z_DB) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM session WHERE id=?',(sid,)).fetchone()[0],1)
+
+    def sync_to_zcode_failing(self, **patches):
+        # 同步到 ZCode：库记录写完后记清单那步出错（2026-10 重启后 device 编号变了就是这样）。
+        with mock.patch.object(ops.state,'record_zcode_injection',side_effect=ValueError('fixture manifest failure')), \
+             mock.patch.multiple(ops,**patches):
+            with self.assertRaisesRegex(ValueError,'fixture manifest failure'):
+                ops.sync_session(self.env,'claude',self.source('claude'),'zcode',{'dir':'/fixture','title':'Title','mtime':1234567890},
+                                 [{'role':'user','text':'hello'},{'role':'assistant','text':'world'}])
+        journal=next((self.env.BRIDGE/'operations').glob('*/journal.json'))
+        self.assertEqual(json.loads(journal.read_text())['status'],'needs_attention')
+        return journal
+
+    def test_sync_already_undone_on_the_spot_is_closed_on_restart(self):
+        # 当场撤回删掉了库记录，只有最后给清单记状态时又出错：日志停在"需人工复核"，重启后会挡住所有新写入。
+        # 库里这条会话已经什么都不剩，重启补偿应直接收尾。
+        journal=self.sync_to_zcode_failing(_manifest_status=mock.Mock(side_effect=ValueError('fixture manifest failure')))
+        with dbconn(self.env.Z_DB) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM session').fetchone()[0],0)
+        self.assertEqual(ops.recover_pending_operations(self.env),[])
+        self.assertEqual(json.loads(journal.read_text())['status'],'compensated')
+        self.assertEqual(bridge_state.load_json(self.env.LEDGER,{}),{})
+        r=ops.sync_session(self.env,'claude',self.source('claude'),'zcode',{'dir':'/fixture','title':'Title','mtime':1234567890},
+                           [{'role':'user','text':'hello'},{'role':'assistant','text':'world'}])
+        self.assertFalse(r['already'])
+
+    def test_sync_rows_changed_after_interruption_still_wait_for_review(self):
+        # 库记录还在、而且中断后被改过：照旧不动，留给人工复核。
+        journal=self.sync_to_zcode_failing(_delete_rows=mock.Mock(side_effect=RuntimeError('fixture delete failure')))
+        with dbconn(self.env.Z_DB) as c:c.execute("UPDATE message SET data='changed by ZCode'")
+        self.assertEqual(len(ops.recover_pending_operations(self.env)),1)
+        self.assertEqual(json.loads(journal.read_text())['status'],'needs_attention')
+        with dbconn(self.env.Z_DB) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM session').fetchone()[0],1)

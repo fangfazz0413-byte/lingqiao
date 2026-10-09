@@ -380,6 +380,96 @@ class UndoTests(AccountCase):
             self.sync.handle_get('/api/accounts/nope', {})
 
 
+class PickTests(AccountCase):
+    """勾选同步（3.6.3）：只同步勾上的会话；没勾的不动。"""
+
+    def run_sync(self, **kw):
+        body = {'source': A, 'target': B, 'window_hours': 24, 'confirm': True}
+        body.update(kw)
+        return self.sync.handle_post('/api/accounts/sync', body)
+
+    def test_only_picked_sessions_are_written(self):
+        b2_before = self.box.b2.read_bytes()
+        run = self.run_sync(pick={f'{A}>{B}': [self.box.s1.name]})['run']
+        self.assertEqual(run['totals'], {'copied': 1, 'updated': 0, 'failed': 0})
+        self.assertTrue((self.box.meta / B / ORG_B / self.box.s1.name).is_file())
+        self.assertEqual(self.box.b2.read_bytes(), b2_before)  # 没勾的标题刷新不做
+        record = self.sync.load_run(run['id'])
+        self.assertEqual(record['plans'][0]['counts']['not_chosen'], 1)
+        self.assertEqual(record['params']['pick'], {f'{A}>{B}': [self.box.s1.name]})
+        # 没勾的那条下次预览还在
+        left = self.sync.preview({'source': A, 'target': B, 'window_hours': 24})['plans'][0]
+        self.assertEqual((left['counts']['copy'], left['counts']['update']), (0, 1))
+
+    def test_pick_per_direction(self):
+        run = self.run_sync(both=True, pick={f'{A}>{B}': [], f'{B}>{A}': [self.box.b20.name]})['run']
+        self.assertEqual(run['totals'], {'copied': 1, 'updated': 0, 'failed': 0})
+        self.assertTrue((self.box.meta / A / ORG_A / self.box.b20.name).is_file())
+        self.assertFalse((self.box.meta / B / ORG_B / self.box.s1.name).exists())
+
+    def test_nothing_picked_writes_nothing_and_skips_backup(self):
+        before = tree_digest(self.box.meta)
+        for pick in ({f'{A}>{B}': []}, {}, {f'{A}>{B}': [f'local_{uid(777)}.json']}):  # 没勾 / 勾的不在计划里
+            with self.subTest(pick=pick):
+                self.assertTrue(self.run_sync(pick=pick)['nothing'])
+        self.assertEqual(tree_digest(self.box.meta), before)
+        self.assertEqual(list(self.box.ssd_backups.iterdir()), [])
+
+    def test_bad_pick_is_refused_before_anything(self):
+        before = tree_digest(self.box.meta)
+        bad = [[self.box.s1.name], 'all', {'x>y': []}, {f'{A}>{B}': ['../../evil.json']}, {f'{A}>{B}': 'local_x.json'},
+               {f'{A}>{B}': [1]}, {f'{A}>{B}': [], f'{B}>{A}': [], f'{A}>{C}': []}, {f'{A}': []}]
+        for pick in bad:
+            with self.subTest(pick=pick):
+                with self.assertRaisesRegex(ValueError, '勾选的会话参数不对'):
+                    self.run_sync(pick=pick)
+        self.assertEqual(tree_digest(self.box.meta), before)
+        self.assertEqual(list(self.box.ssd_backups.iterdir()), [])
+
+
+class HideTests(AccountCase):
+    """隐藏不用的账号（3.6.3）：只改灵桥 config.json，账号目录和会话文件不动。"""
+
+    def test_hide_and_unhide_only_touch_lingqiao_config(self):
+        before = tree_digest(self.box.meta)
+        status = self.sync.handle_post('/api/accounts/hide', {'account': C, 'hidden': True})
+        by_id = {a['id']: a for a in status['accounts']}
+        self.assertTrue(by_id[C]['hidden']); self.assertFalse(by_id[A]['hidden'])
+        self.assertEqual(status['accounts'][-1]['id'], C)  # 隐藏的排最后
+        config = json.loads(self.box.config.read_text(encoding='utf-8'))
+        self.assertEqual(config['claude_accounts']['hidden'], [C])
+        self.assertEqual(config['claude_accounts']['labels'], {A: '个人账号（测试）', B: '团队账号'})  # 名字、其他设置都保留
+        self.assertEqual(config['sync_window_days'], 3)
+        self.sync.set_hidden({'account': C, 'hidden': True})  # 再点一次不重复
+        self.assertEqual(json.loads(self.box.config.read_text(encoding='utf-8'))['claude_accounts']['hidden'], [C])
+        with self.assertRaisesRegex(ValueError, '已经隐藏'):
+            self.sync.preview({'source': C, 'target': B, 'window_hours': 0})
+        with self.assertRaisesRegex(ValueError, '已经隐藏'):
+            self.sync.sync({'source': A, 'target': C, 'window_hours': 0, 'confirm': True})
+        status = self.sync.set_hidden({'account': C, 'hidden': False})
+        self.assertFalse({a['id']: a for a in status['accounts']}[C]['hidden'])
+        self.assertEqual(json.loads(self.box.config.read_text(encoding='utf-8'))['claude_accounts']['hidden'], [])
+        self.sync.preview({'source': C, 'target': B, 'window_hours': 0})
+        self.assertEqual(tree_digest(self.box.meta), before)
+        self.assertTrue(any(line.startswith('account-sync hide account=cccccccc') for line in self.box.logs))
+
+    def test_recent_ignores_hidden_accounts(self):
+        self.sync.set_hidden({'account': A, 'hidden': True})
+        by_id = {a['id']: a for a in self.sync.status()['accounts']}
+        self.assertFalse(by_id[A]['recent']); self.assertTrue(by_id[B]['recent'])
+
+    def test_bad_hide_requests(self):
+        for body, message in [({'account': '../x', 'hidden': True}, '参数不对'), ({'account': C, 'hidden': 'yes'}, '参数不对'),
+                              ({'account': C}, '参数不对'), ({'account': 'eeeeeeee-0000-4000-8000-00000000000e', 'hidden': True}, '找不到')]:
+            with self.subTest(body=body):
+                with self.assertRaisesRegex(ValueError, message):
+                    self.sync.set_hidden(body)
+        self.box.config.write_text('[1, 2]', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, '格式不对'):
+            self.sync.set_hidden({'account': C, 'hidden': True})
+        self.assertEqual(self.box.config.read_text(encoding='utf-8'), '[1, 2]')
+
+
 class AccountHttpTests(unittest.TestCase):
     def setUp(self):
         import server as s

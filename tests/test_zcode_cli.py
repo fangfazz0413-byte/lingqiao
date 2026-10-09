@@ -127,6 +127,25 @@ class ZCodeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "identity mismatch"):
             zi.do_rollback(str(self.lab_db))
 
+    def test_manifest_follows_device_renumbering_but_not_a_replaced_file(self):
+        with patch.object(sync, "collect", return_value=self.result):
+            zi.do_inject(str(self.real_db), False)
+        paths = zi.state_paths(self.real_db)
+        # Mac 重启后同一个文件的 device 编号会变，路径和 inode 不变：清单照常用，并换成现在的身份。
+        raw = bs.load_json(paths["manifest"])
+        raw["database"]["device"] += 2
+        bs.atomic_json(paths["manifest"], raw)
+        manifest = bs.load_zcode_manifest(paths["manifest"], self.real_db)
+        self.assertEqual(manifest["database"], bs.database_identity(self.real_db))
+        self.assertEqual([e["status"] for e in manifest["sessions"]], ["committed"])
+        self.assertFalse(bs.same_database(None, manifest["database"]))
+        # 文件真被换掉（同一路径、新 inode）：还是拒绝。
+        replacement = self.base / "replacement.sqlite"
+        fixture_db(replacement)
+        os.replace(replacement, self.real_db)
+        with self.assertRaisesRegex(ValueError, "identity mismatch"):
+            zi.do_rollback(str(self.real_db))
+
     def test_state_failure_compensates_new_sql_rows(self):
         real = bs.record_zcode_injection
         def fail_committed(*args, **kwargs):

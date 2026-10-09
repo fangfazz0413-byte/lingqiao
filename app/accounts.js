@@ -8,7 +8,7 @@
   const QUIT_DONE = ON_WINDOWS ? "我已经在托盘里把 Claude 桌面版退出了" : "我已经在 Claude 桌面版里按 ⌘Q 完全退出了";
   const WINDOW_TEXT = { 3: "最近 3 小时", 5: "最近 5 小时", 24: "最近 24 小时", 48: "最近 2 天", 168: "最近 7 天", 0: "不限时间" };
   const S = { host: null, visible: false, status: null, preview: null, previewKey: "", busy: false, timer: null, lastRun: null,
-    form: null, modal: null, error: "" };
+    form: null, modal: null, error: "", unpicked: {} };
 
   function esc(value) {
     return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -41,9 +41,26 @@
 
   /* ---------- 纯函数（测试用 _t 暴露） ---------- */
   function planKey(form) { return JSON.stringify([form?.source || "", form?.target || "", Number(form?.window ?? 24), !!form?.both]); }
-  function targets(accounts) { return (accounts || []).filter(a => a.target_org); }
+  function visible(accounts) { return (accounts || []).filter(a => !a.hidden); }
+  function targets(accounts) { return visible(accounts).filter(a => a.target_org); }
+  /* 勾选同步：每个方向一组，记"没勾的"，默认全勾。 */
+  function dirKey(plan) { return `${plan?.source || ""}>${plan?.target || ""}`; }
+  function pickable(plan) { return [...(plan?.copy || []), ...(plan?.update || [])].filter(item => item.file); }
+  function isPicked(plan, file, unpicked) { return !unpicked?.[dirKey(plan)]?.has(file); }
+  function pickFor(plans, unpicked) {
+    const out = {};
+    (plans || []).forEach(p => { out[dirKey(p)] = pickable(p).filter(item => isPicked(p, item.file, unpicked)).map(item => item.file); });
+    return out;
+  }
+  function pickedCounts(plan, unpicked) {
+    return { copy: (plan?.copy || []).filter(i => i.file && isPicked(plan, i.file, unpicked)).length,
+      update: (plan?.update || []).filter(i => i.file && isPicked(plan, i.file, unpicked)).length };
+  }
+  function pickedTotals(plans, unpicked) {
+    return (plans || []).reduce((sum, p) => { const c = pickedCounts(p, unpicked); return { copy: sum.copy + c.copy, update: sum.update + c.update }; }, { copy: 0, update: 0 });
+  }
   function defaultForm(status) {
-    // 默认：最近在用的账号 → 另一个有名字的账号，两边互相补齐（切到哪个账号都能看到全部会话）。
+    // 默认：最近在用的账号 → 另一个有名字的账号，两边互相补齐（切到哪个账号都能看到全部会话）。隐藏的账号不算。
     const usable = targets(status?.accounts);
     const labeled = usable.filter(a => a.label);
     const pool = labeled.length >= 2 ? labeled : usable;
@@ -55,12 +72,16 @@
     const claude = state?.status?.claude;
     if (state?.busy || !state?.preview || state.preview.nothing) return false;
     if (state.previewKey !== planKey(state.form)) return false;
+    const picked = pickedTotals(state.preview.plans, state.unpicked);
+    if (!picked.copy && !picked.update) return false;
     return claude?.running === false;
   }
   function syncBlockReason(state) {
     if (state?.busy) return "正在处理…";
     if (!state?.preview || state.previewKey !== planKey(state.form)) return "先点「预览」看看要复制哪些";
     if (state.preview.nothing) return "两边已经一致，不用同步";
+    const picked = pickedTotals(state.preview.plans, state.unpicked);
+    if (!picked.copy && !picked.update) return "一条都没勾：在下面的列表里勾上要同步的会话";
     const claude = state.status?.claude;
     if (claude?.running === null || claude?.running === undefined) return "没法确认 Claude 桌面版有没有退出";
     if (claude.running) return `Claude 桌面版还开着：先${QUIT}`;
@@ -108,7 +129,7 @@
     S.busy = true; render();
     try {
       const result = await call("/api/accounts/preview", { method: "POST", body: requestBody(form) });
-      S.preview = result; S.previewKey = planKey(form);
+      S.preview = result; S.previewKey = planKey(form); S.unpicked = {};
       if (result.claude) S.status = { ...(S.status || {}), claude: result.claude };
       return result;
     } catch (error) { notify("预览失败：" + error.message, false); return null; }
@@ -117,17 +138,20 @@
   async function requestSync(deps = {}) {
     const call = deps.api || api, ask = deps.confirm || confirmDialog;
     if (!canSync(S)) { notify(syncBlockReason(S) || "现在不能同步", false); return null; }
-    const plans = S.preview.plans || [], sum = totals(plans), backup = S.preview.backup || S.status?.backup || {};
-    const lines = plans.map(p => `· ${esc(p.source_label)} → <b>${esc(p.target_label)}</b>：复制 <b>${p.counts.copy}</b> 条，刷新标题 <b>${p.counts.update}</b> 个`).join("<br>");
+    const plans = S.preview.plans || [], backup = S.preview.backup || S.status?.backup || {};
+    const lines = plans.map(p => {
+      const c = pickedCounts(p, S.unpicked), all = (p.counts?.copy || 0) + (p.counts?.update || 0), left = all - c.copy - c.update;
+      return `· ${esc(p.source_label)} → <b>${esc(p.target_label)}</b>：复制 <b>${c.copy}</b> 条，刷新标题 <b>${c.update}</b> 个${left ? `（没勾的 ${left} 条不动）` : ""}`;
+    }).join("<br>");
     const ok = await ask({ title: "先备份，再同步？", ok: "备份并同步", check: QUIT_DONE,
       body: `会先把整个 <code>claude-code-sessions</code> 备份到<br><code>${esc(backup.dir || "")}</code>${backup.fallback ? "（设置的备份目录现在不在，先放在灵桥本地）" : ""}，逐个文件核对；然后：<br>${lines}<br>只复制侧栏条目，聊天记录本身不动；目标账号删过的会话不会复活。做完可以在「同步记录」里撤销。` });
     if (!ok) return null;
     S.busy = true; render();
     try {
-      const result = await call("/api/accounts/sync", { method: "POST", body: { ...requestBody(S.form), confirm: true } });
-      if (result.nothing) { notify("两边已经一致，没有要补的"); S.preview = null; S.previewKey = ""; }
+      const result = await call("/api/accounts/sync", { method: "POST", body: { ...requestBody(S.form), confirm: true, pick: pickFor(plans, S.unpicked) } });
+      if (result.nothing) { notify("两边已经一致，没有要补的"); S.preview = null; S.previewKey = ""; S.unpicked = {}; }
       else {
-        S.lastRun = result.run; S.preview = null; S.previewKey = "";
+        S.lastRun = result.run; S.preview = null; S.previewKey = ""; S.unpicked = {};
         notify(`同步好了：复制 ${result.run.totals.copied} 条、刷新标题 ${result.run.totals.updated} 个` + (result.run.totals.failed ? `，${result.run.totals.failed} 条没成` : ""), !result.run.totals.failed);
       }
       return result;
@@ -149,6 +173,17 @@
     } catch (error) { notify("撤销没做：" + error.message, false); return null; }
     finally { S.busy = false; await loadStatus(deps); }
   }
+  async function requestHide(accountId, hidden, deps = {}) {
+    const account = (S.status?.accounts || []).find(a => a.id === accountId);
+    S.busy = true; render();
+    try {
+      S.status = await (deps.api || api)("/api/accounts/hide", { method: "POST", body: { account: accountId, hidden } });
+      if (!S.form || [S.form.source, S.form.target].includes(accountId)) { S.form = defaultForm(S.status); S.preview = null; S.previewKey = ""; }
+      notify(hidden ? `已隐藏「${account?.name || accountId.slice(0, 8)}」：会话文件都没动，在下面「已隐藏的账号」里可以取消` : `「${account?.name || accountId.slice(0, 8)}」已经取消隐藏`);
+      return S.status;
+    } catch (error) { notify((hidden ? "隐藏" : "取消隐藏") + "没做：" + error.message, false); return null; }
+    finally { S.busy = false; render(); }
+  }
   async function openClaude(deps = {}) {
     try { await (deps.api || api)("/api/accounts/open-claude", { method: "POST", body: {} }); notify("已经让 Claude 桌面版打开；在桌面版里切到目标账号就能看到"); }
     catch (error) { notify("打开失败：" + error.message, false); }
@@ -157,7 +192,8 @@
     try {
       S.status = await (deps.api || api)("/api/accounts/status");
       S.error = "";
-      if (!S.form || !S.status.accounts.some(a => a.id === S.form.source) || !S.status.accounts.some(a => a.id === S.form.target)) S.form = defaultForm(S.status);
+      const shown = visible(S.status.accounts);
+      if (!S.form || !shown.some(a => a.id === S.form.source) || !shown.some(a => a.id === S.form.target)) S.form = defaultForm(S.status);
     } catch (error) { S.error = error.message; }
     render();
   }
@@ -175,20 +211,36 @@
   function accountCard(a) {
     const orgNote = a.ambiguous ? `<div class="as-dim">有 ${a.orgs.filter(o => o.sessions).length} 个组织目录都有会话，默认补到最近用的 ${esc(a.target_org?.slice(0, 8))}…</div>` : "";
     const noTarget = a.target_org ? "" : `<div class="as-warn-text">这个账号下还没有会话，不能当目标：先用它在桌面版里新建一条会话</div>`;
-    return `<div class="as-acc${a.recent ? " recent" : ""}${a.label ? "" : " other"}">
-      <div class="as-acc-name">${esc(a.name)}${a.recent ? ' <span class="as-chip run">最近活跃</span>' : ""}</div>
+    const toggle = a.hidden
+      ? `<button class="btn as-mini as-acc-hide" data-act="unhide" data-account="${esc(a.id)}" title="重新显示这个账号">取消隐藏</button>`
+      : `<button class="btn as-mini as-acc-hide" data-act="hide" data-account="${esc(a.id)}" title="不用的账号：页面上不再显示、不能当来源或目标；账号目录和会话文件都不动">隐藏</button>`;
+    return `<div class="as-acc${a.recent ? " recent" : ""}${a.label ? "" : " other"}${a.hidden ? " hidden-acc" : ""}">
+      <div class="as-acc-name">${esc(a.name)}${a.recent ? ' <span class="as-chip run">最近活跃</span>' : ""}${toggle}</div>
       <div class="as-acc-id">${esc(a.short)}…</div>
-      <div class="as-acc-stats"><b>${a.sessions}</b> 条会话 · 删过 ${a.tombstones} · 最近活动 ${esc(fmtTime(a.newest))}</div>${orgNote}${noTarget}</div>`;
+      <div class="as-acc-stats"><b>${a.sessions}</b> 条会话 · 删过 ${a.tombstones} · 最近活动 ${esc(fmtTime(a.newest))}</div>${a.hidden ? "" : orgNote + noTarget}</div>`;
   }
   function options(accounts, selected, onlyTargets) {
-    return (accounts || []).filter(a => !onlyTargets || a.target_org)
+    return visible(accounts).filter(a => !onlyTargets || a.target_org)
       .map(a => `<option value="${esc(a.id)}"${a.id === selected ? " selected" : ""}>${esc(a.name)}（${esc(a.short)}…）</option>`).join("");
   }
-  function itemList(items, kind) {
+  function itemList(items, kind, plan) {
     if (!items?.length) return '<div class="as-dim">没有</div>';
-    return `<ul class="as-list">${items.map(item => kind === "update"
-      ? `<li><span class="as-old">${esc(item.title_old || "（无标题）")}</span> → <b>${esc(item.title_new)}</b></li>`
-      : `<li>${esc(item.title || "（无标题）")}<span class="as-dim"> · ${esc(fmtTime(item.last))}${item.reason_text ? " · " + esc(item.reason_text) : ""}</span></li>`).join("")}</ul>`;
+    const text = item => kind === "update"
+      ? `<span class="as-old">${esc(item.title_old || "（无标题）")}</span> → <b>${esc(item.title_new)}</b>`
+      : `${esc(item.title || "（无标题）")}<span class="as-dim"> · ${esc(fmtTime(item.last))}${item.reason_text ? " · " + esc(item.reason_text) : ""}</span>`;
+    // 传了 plan 的（新复制、刷新标题）每条前面一个勾选框，默认全勾；只同步勾上的
+    const box = item => plan && item.file
+      ? `<input type="checkbox" class="as-pick-box" data-pick="${esc(dirKey(plan))}" data-file="${esc(item.file)}"${isPicked(plan, item.file, S.unpicked) ? " checked" : ""}> ` : "";
+    return `<ul class="as-list${plan ? " as-pick-list" : ""}">${items.map(item => plan && item.file
+      ? `<li><label class="as-pick">${box(item)}<span>${text(item)}</span></label></li>` : `<li>${text(item)}</li>`).join("")}</ul>`;
+  }
+  function pickBar(p) {
+    const key = esc(dirKey(p)), c = pickedCounts(p, S.unpicked), all = pickable(p).length;
+    if (!all) return "";
+    const more = (p.counts?.copy || 0) + (p.counts?.update || 0) > all ? `<span class="as-dim">（只列出前 ${all} 条，没列出来的不会同步）</span>` : "";
+    return `<div class="as-pick-bar"><span class="as-chip ${c.copy + c.update ? "ok" : "none"}" data-pick-count="${key}">已勾 ${c.copy + c.update} / ${all}</span>
+      <button class="btn as-mini" data-act="pick-all" data-dir="${key}">全选</button><button class="btn as-mini" data-act="pick-none" data-dir="${key}">全不选</button>
+      <span class="as-dim">只同步勾上的；没勾的这次不动</span>${more}</div>`;
   }
   function planCard(p) {
     const c = p.counts || {};
@@ -198,8 +250,9 @@
       <div class="as-counts"><span class="as-chip ${c.copy ? "ok" : "none"}">新复制 ${c.copy}</span><span class="as-chip ${c.update ? "run" : "none"}">刷新标题 ${c.update}</span>
         <span class="as-chip none">已在 ${c.already}</span><span class="as-chip ${skipped ? "warn" : "none"}">跳过 ${skipped}</span>
         <span class="as-chip none">不在时间范围 ${c.out_of_window}</span>${c.unreadable ? `<span class="as-chip warn">读不了 ${c.unreadable}</span>` : ""}</div>
-      <details ${c.copy ? "open" : ""}><summary>新复制 ${c.copy} 条</summary>${itemList(p.copy)}</details>
-      <details ${c.update ? "open" : ""}><summary>刷新标题 ${c.update} 个（来源那边聊出了新标题）</summary>${itemList(p.update, "update")}</details>
+      ${pickBar(p)}
+      <details ${c.copy ? "open" : ""}><summary>新复制 ${c.copy} 条</summary>${itemList(p.copy, "copy", p)}</details>
+      <details ${c.update ? "open" : ""}><summary>刷新标题 ${c.update} 个（来源那边聊出了新标题）</summary>${itemList(p.update, "update", p)}</details>
       <details><summary>跳过 ${skipped} 条（聊天记录不在本机 / 目标账号删过 / 同名冲突…）</summary>${itemList(p.skipped)}</details>
       <details><summary>已经在目标账号里 ${c.already} 条</summary>${itemList(p.already)}</details></div>`;
   }
@@ -222,6 +275,35 @@
       <span class="as-run-state">${r.undone ? '<span class="as-chip none">已撤销</span>' : `<button class="btn as-mini" data-act="undo" data-run="${esc(r.id)}">撤销</button>`}</span>
       <span class="as-run-backup" title="${esc(r.backup?.path)}">${esc(String(r.backup?.path || "").split("/").pop())}</span></div>`).join("")}</div>`;
   }
+  function hiddenSection(accounts) {
+    const hidden = (accounts || []).filter(a => a.hidden);
+    if (!hidden.length) return "";
+    return `<details class="as-others as-hidden"><summary>已隐藏的账号 ${hidden.length} 个（不显示、不参与同步；账号目录和会话文件都没动）</summary><div class="as-accounts">${hidden.map(accountCard).join("")}</div></details>`;
+  }
+  function onPick(input) {
+    const key = input.dataset.pick, file = input.dataset.file;
+    const set = S.unpicked[key] || (S.unpicked[key] = new Set());
+    if (input.checked) set.delete(file); else set.add(file);
+    updatePickUi();
+  }
+  function pickAll(key, on) {
+    const plan = (S.preview?.plans || []).find(p => dirKey(p) === key);
+    if (!plan) return;
+    S.unpicked[key] = on ? new Set() : new Set(pickable(plan).map(item => item.file));
+    S.host?.querySelectorAll(".as-pick-box").forEach(box => { if (box.dataset.pick === key) box.checked = on; });
+    updatePickUi();
+  }
+  function updatePickUi() {
+    // 勾选只更新计数和按钮，不整页重画（展开着的列表、滚动位置都不变）
+    if (!S.host) return;
+    (S.preview?.plans || []).forEach(p => {
+      const c = pickedCounts(p, S.unpicked), chip = [...S.host.querySelectorAll("[data-pick-count]")].find(n => n.dataset.pickCount === dirKey(p));
+      if (chip) { chip.textContent = `已勾 ${c.copy + c.update} / ${pickable(p).length}`; chip.className = `as-chip ${c.copy + c.update ? "ok" : "none"}`; }
+    });
+    const button = el('[data-act="sync"]'), hint = el(".as-hint"), block = syncBlockReason(S);
+    if (button) { button.disabled = !canSync(S); button.title = block; }
+    if (hint) hint.textContent = (block || "预览没问题，可以同步了。") + (S.form?.both ? " · 两边互相补齐：两个账号都能看到全部会话。" : "");
+  }
   function render() {
     if (!S.host || !S.visible) return;
     const status = S.status;
@@ -232,8 +314,8 @@
     const preview = S.preview && S.previewKey === planKey(form) ? S.preview : null;
     el("#as-body").innerHTML = `
       <div class="as-banner ${claude.cls}"><span class="as-dot"></span>${esc(claude.text)}</div>
-      <div class="as-accounts">${status.accounts.filter(a => a.label).map(accountCard).join("")}</div>
-      ${status.accounts.some(a => !a.label) ? `<details class="as-others"><summary>其它账号目录 ${status.accounts.filter(a => !a.label).length} 个（没起名字，多半是更早的账号）</summary><div class="as-accounts">${status.accounts.filter(a => !a.label).map(accountCard).join("")}</div></details>` : ""}
+      <div class="as-accounts">${visible(status.accounts).filter(a => a.label).map(accountCard).join("")}</div>
+      ${visible(status.accounts).some(a => !a.label) ? `<details class="as-others"><summary>其它账号目录 ${visible(status.accounts).filter(a => !a.label).length} 个（没起名字，多半是更早的账号；不用的可以点「隐藏」）</summary><div class="as-accounts">${visible(status.accounts).filter(a => !a.label).map(accountCard).join("")}</div></details>` : ""}
       <div class="as-card as-form">
         <label>从 <select id="as-src" aria-label="来源账号">${options(status.accounts, form.source, false)}</select></label>
         <button class="btn as-mini" data-act="swap" title="对调来源和目标" aria-label="对调来源和目标">⇄</button>
@@ -247,15 +329,19 @@
       </div>
       <div id="as-preview">${preview ? (preview.nothing ? '<div class="as-card as-dim">两边已经一致，不用同步。</div>' : preview.plans.map(planCard).join("")) : ""}</div>
       <div id="as-result">${runCard(S.lastRun)}</div>
+      ${hiddenSection(status.accounts)}
       <div class="as-card"><div class="as-plan-head"><b>同步记录</b><span class="as-dim">最近 10 次；每次的备份都在对应目录里，旁边有一份「灵桥同步记录.json」</span></div>${runsTable(status.runs)}</div>`;
     bind();
   }
   function bind() {
     const read = () => { S.form = { source: el("#as-src")?.value || "", target: el("#as-dst")?.value || "", window: Number(el("#as-win")?.value ?? 24), both: !!el("#as-both")?.checked }; render(); };
     ["#as-src", "#as-dst", "#as-win", "#as-both"].forEach(sel => el(sel)?.addEventListener("change", read));
+    S.host.querySelectorAll(".as-pick-box").forEach(box => box.addEventListener("change", () => onPick(box)));
     S.host.querySelectorAll("[data-act]").forEach(button => button.addEventListener("click", () => {
       const act = button.dataset.act;
       if (act === "preview") runPreview();
+      else if (act === "hide" || act === "unhide") requestHide(button.dataset.account, act === "hide");
+      else if (act === "pick-all" || act === "pick-none") pickAll(button.dataset.dir, act === "pick-all");
       else if (act === "sync") requestSync();
       else if (act === "undo") requestUndo(button.dataset.run);
       else if (act === "open-claude") openClaude();
@@ -274,6 +360,7 @@
     hide() { S.visible = false; clearTimeout(S.timer); document.removeEventListener("keydown", onKey); if (S.modal) S.modal(false); },
     refresh() { S.preview = null; S.previewKey = ""; return loadStatus(); },
     _t: { esc, api, planKey, defaultForm, canSync, syncBlockReason, totals, skippedCount, claudeText, fmtTime, fmtBytes, planCard, runCard, runsTable,
-      accountCard, requestSync, requestUndo, runPreview, state: S, render, WINDOW_TEXT },
+      accountCard, requestSync, requestUndo, requestHide, runPreview, state: S, render, WINDOW_TEXT, visible, options, dirKey, pickFor, pickedCounts,
+      pickedTotals, hiddenSection, onPick, pickAll },
   };
 })();

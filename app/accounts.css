@@ -51,6 +51,14 @@
 .as-plan summary { cursor: pointer; font-size: 12.5px; color: var(--text2); padding: 3px 0; }
 .as-list { margin: 4px 0 6px 18px; font-size: 12.5px; line-height: 1.75; max-height: 260px; overflow: auto; }
 .as-old { color: var(--text3); text-decoration: line-through; }
+/* 勾选同步 */
+.as-pick-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 2px; }
+.as-pick-list { list-style: none; margin-left: 2px; }
+.as-pick { display: flex; align-items: flex-start; gap: 7px; cursor: pointer; }
+.as-pick input { accent-color: var(--red); margin-top: 5px; flex-shrink: 0; }
+/* 隐藏不用的账号 */
+.as-acc-hide { margin-left: auto; padding: 2px 9px; font-size: 11.5px; font-weight: 500; color: var(--text3); }
+.as-acc.hidden-acc { opacity: .6; }
 .as-line { font-size: 12.5px; color: var(--text2); margin-top: 6px; line-height: 1.6; }
 .as-actions { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .as-done.undone { opacity: .8; }

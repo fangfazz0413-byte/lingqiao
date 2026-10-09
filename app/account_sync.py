@@ -43,6 +43,7 @@ CLAUDE_BUNDLE = 'com.anthropic.claudefordesktop'
 MAX_META = 4 * 1024 * 1024
 RUNS_KEPT = 60
 LIST_LIMIT = 400
+PICK_LIMIT = 5000
 # 桌面版主进程和它的 Helper 在跑就不写；chrome-native-host、CheckClaude、crashpad 这些辅助进程无妨。
 BLOCKING = (re.compile(r'(^|/)Claude\.app/Contents/MacOS/Claude\Z'),
             re.compile(r'(^|/)Claude\.app/Contents/Frameworks/Claude Helper[^/]*\.app/'),
@@ -199,8 +200,10 @@ class AccountSync:
         section = section if isinstance(section, dict) else {}
         raw = section.get('labels') if isinstance(section.get('labels'), dict) else {}
         labels = {k: v.strip()[:40] for k, v in raw.items() if isinstance(k, str) and UUID_RE.match(k) and isinstance(v, str) and v.strip()}
+        # 不用的账号（比如以前登录过、现在不用的）：页面上不显示、不能当来源或目标；目录和文件都不动。
+        hidden = {h for h in section.get('hidden', []) if isinstance(h, str) and UUID_RE.match(h)} if isinstance(section.get('hidden'), list) else set()
         backup = section.get('backup_dir') if isinstance(section.get('backup_dir'), str) and section.get('backup_dir').strip() else DEFAULT_BACKUP_DIR
-        return {'labels': labels, 'backup_dir': Path(os.path.expanduser(backup)) if backup else None}
+        return {'labels': labels, 'hidden': hidden, 'backup_dir': Path(os.path.expanduser(backup)) if backup else None}
 
     def backup_target(self):
         """备份放哪：指定的目录在就放那里；没指定放灵桥本地；指定了但不在（比如外接硬盘没接）也放灵桥本地，
@@ -250,7 +253,8 @@ class AccountSync:
         root = self.meta_root()
         if root.is_symlink() or not root.is_dir():
             return {'available': False, 'root': root, 'accounts': []}
-        labels = self.config()['labels']
+        config = self.config()
+        labels, hidden = config['labels'], config['hidden']
         accounts = []
         for account in sorted(os.scandir(root), key=lambda e: e.name):
             if not account.is_dir(follow_symlinks=False) or not UUID_RE.match(account.name):
@@ -284,7 +288,7 @@ class AccountSync:
                         tombs.add(tomb.group(1))
                 orgs.append({'id': org.name, 'sessions': sessions, 'tombs': tombs, 'unreadable': unreadable,
                              'newest': max((s['recent'] for s in sessions), default=0)})
-            accounts.append({'id': account.name, 'label': labels.get(account.name, ''), 'orgs': orgs,
+            accounts.append({'id': account.name, 'label': labels.get(account.name, ''), 'hidden': account.name in hidden, 'orgs': orgs,
                              'newest': max((o['newest'] for o in orgs), default=0)})
         return {'available': True, 'root': root, 'accounts': accounts}
 
@@ -335,6 +339,9 @@ class AccountSync:
         source, target = self._account(scan, source_id), self._account(scan, target_id)
         if source['id'] == target['id']:
             raise ValueError('来源和目标不能是同一个账号')
+        for account in (source, target):
+            if account['hidden']:
+                raise ValueError(f'“{self.name_of(account)}”已经隐藏了：要用它，先在「已隐藏的账号」里取消隐藏')
         dst = self.target_org(target, orgs.get(target['id']))
         existing, tombs = {}, set()
         for org in target['orgs']:
@@ -389,6 +396,33 @@ class AccountSync:
             raise ValueError('组织目录参数不对')
         return source, target, int(window), body.get('both') is True, orgs
 
+    @staticmethod
+    def _pick(body):
+        """勾选同步：{"<来源>><目标>": ["local_….json", …]}，只同步列出来的会话；不传 pick 就是预览里的全部。"""
+        pick = body.get('pick')
+        if pick is None:
+            return None
+        if not isinstance(pick, dict) or len(pick) > 2:
+            raise ValueError('勾选的会话参数不对')
+        chosen = {}
+        for key, files in pick.items():
+            ends = key.split('>') if isinstance(key, str) else []
+            if (len(ends) != 2 or not all(UUID_RE.match(e) for e in ends) or not isinstance(files, list) or len(files) > PICK_LIMIT
+                    or not all(isinstance(f, str) and LOCAL_RE.match(f) for f in files)):
+                raise ValueError('勾选的会话参数不对')
+            chosen[key] = set(files)
+        return chosen
+
+    @staticmethod
+    def _keep_picked(plan, chosen):
+        """只留下勾选了的；没勾的记个数。勾选里有、但现在已经不在计划里的（比如刚被别处同步过），不会被加进来。"""
+        files = chosen.get(plan['source'] + '>' + plan['target'], set())
+        before = len(plan['copy']) + len(plan['update'])
+        plan['copy'] = [item for item in plan['copy'] if item['file'] in files]
+        plan['update'] = [item for item in plan['update'] if item['file'] in files]
+        plan['not_chosen'] = before - len(plan['copy']) - len(plan['update'])
+        return plan
+
     def plans(self, body, scan=None):
         source, target, window, both, orgs = self._params(body)
         scan = scan or self.scan()
@@ -404,6 +438,8 @@ class AccountSync:
     def counts(plan):
         out = {'copy': len(plan['copy']), 'update': len(plan['update']), 'already': len(plan['already']),
                'out_of_window': plan['out_of_window'], 'unreadable': plan['unreadable']}
+        if 'not_chosen' in plan:
+            out['not_chosen'] = plan['not_chosen']
         for reason in SKIP_REASONS:
             out[reason] = sum(1 for s in plan['skipped'] if s['reason'] == reason)
         return out
@@ -423,7 +459,7 @@ class AccountSync:
         base = {'claude': claude, 'windows': list(WINDOWS), 'backup': self.backup_public(), 'root': str(scan['root'])}
         if not scan['available']:
             return {**base, 'available': False, 'reason': '没找到 Claude 桌面版的会话目录', 'accounts': [], 'runs': self.runs(10)}
-        recent = max(scan['accounts'], key=lambda a: a['newest'], default=None)
+        recent = max((a for a in scan['accounts'] if not a['hidden']), key=lambda a: a['newest'], default=None)
         accounts = []
         for account in scan['accounts']:
             try:
@@ -431,13 +467,14 @@ class AccountSync:
             except ValueError:
                 auto = None
             accounts.append({'id': account['id'], 'short': account['id'][:8], 'label': account['label'], 'name': self.name_of(account),
+                             'hidden': account['hidden'],
                              'sessions': sum(len(o['sessions']) for o in account['orgs']),
                              'tombstones': sum(len(o['tombs']) for o in account['orgs']), 'newest': account['newest'] or None,
                              'recent': bool(recent and recent['newest'] and recent['id'] == account['id']), 'target_org': auto,
                              'ambiguous': sum(1 for o in account['orgs'] if o['sessions']) > 1,
                              'orgs': [{'id': o['id'], 'short': o['id'][:8], 'sessions': len(o['sessions']), 'tombstones': len(o['tombs']),
                                        'unreadable': len(o['unreadable']), 'newest': o['newest'] or None} for o in account['orgs']]})
-        accounts.sort(key=lambda a: (not a['label'], -(a['newest'] or 0)))
+        accounts.sort(key=lambda a: (a['hidden'], not a['label'], -(a['newest'] or 0)))
         return {**base, 'available': True, 'reason': '', 'accounts': accounts, 'runs': self.runs(10)}
 
     def preview(self, body):
@@ -523,13 +560,16 @@ class AccountSync:
     def sync(self, body):
         if body.get('confirm') is not True:
             raise ValueError('同步前要先预览，再确认')
+        chosen = self._pick(body)
         if not self.lock.acquire(blocking=False):
             raise ValueError('上一次同步还没做完')
         try:
             self._require_quit()
             with bridge_state.operation_lock(Path(self.env.BRIDGE) / 'operation.lock'):
                 plans = self.plans(body, self.scan())
-                params = {k: body.get(k) for k in ('source', 'target', 'window_hours', 'both', 'orgs')}
+                if chosen is not None:
+                    plans = [self._keep_picked(p, chosen) for p in plans]
+                params = {k: body.get(k) for k in ('source', 'target', 'window_hours', 'both', 'orgs', 'pick')}
                 if all(not p['copy'] and not p['update'] for p in plans):
                     return {'ok': True, 'nothing': True, 'plans': [self.public_plan(p) for p in plans]}
                 run_id = time.strftime('%Y%m%d-%H%M%S') + '-' + secrets.token_hex(2)
@@ -660,6 +700,27 @@ class AccountSync:
         self._invalidate()
         return {'ok': True, 'run': self.public_run(record)}
 
+    def set_hidden(self, body):
+        """隐藏不用的账号，或者取消隐藏。只改灵桥的 config.json，Claude 的账号目录和会话文件一个都不动。"""
+        account, hide = body.get('account'), body.get('hidden')
+        if not (isinstance(account, str) and UUID_RE.match(account)) or not isinstance(hide, bool):
+            raise ValueError('隐藏参数不对')
+        with bridge_state.operation_lock(Path(self.env.BRIDGE) / 'operation.lock'):
+            if hide:
+                self._account(self.scan(), account)  # 只能隐藏现在真有的账号目录
+            config = bridge_state.load_json(Path(self.env.CONFIG), {})
+            if not isinstance(config, dict):
+                raise ValueError('灵桥配置文件格式不对，没改')
+            section = config.get('claude_accounts')
+            section = dict(section) if isinstance(section, dict) else {}
+            hidden = [h for h in section.get('hidden', []) if isinstance(h, str) and UUID_RE.match(h)] if isinstance(section.get('hidden'), list) else []
+            hidden = [h for h in hidden if h != account] + ([account] if hide else [])
+            section['hidden'] = hidden
+            config['claude_accounts'] = section
+            bridge_state.atomic_json(Path(self.env.CONFIG), config)
+        self.env.log(f"account-sync {'hide' if hide else 'unhide'} account={account[:8]}")
+        return self.status()
+
     def open_claude(self):
         self.opener(list(OPEN_CLAUDE))
         return {'ok': True}
@@ -685,4 +746,6 @@ class AccountSync:
             return self.undo(body.get('run_id'))
         if path == '/api/accounts/open-claude':
             return self.open_claude()
+        if path == '/api/accounts/hide':
+            return self.set_hidden(body)
         raise FileNotFoundError('不存在的接口')
