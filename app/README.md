@@ -147,6 +147,7 @@
 
 ## 版本
 
+- 3.6.5：同步到 ZCode 的会话补登记 tasks-index 索引（以前只写主库，ZCode 桌面版会话列表看不到）；修复导入 Codex 会话在新版 Codex 续聊报错（不再给 message 塞随机 msg_ id，附 tools/repair_codex_msgids.py 修历史文件）；Claude 第三方壳（汉化版等）数据目录扫描 Claude*，没有桌面账号元数据时降级写 ~/.claude/projects 而不再报错。
 - 3.6.4：左下角的版本号改成显示真实版本（以前写死在页面里，更新以后还显示 v3.5）。点「检查更新」更新完、点「现在重启」后，这里就是新的版本号。
 - 3.6.3：修复 Mac 重启后同步到 ZCode 报"ZCode manifest database identity mismatch"。灵桥认数据库原来连 device 编号一起比，这个编号 macOS 每次开机都可能重排；现在只比路径和 inode，文件真被换掉时仍然拒绝。回收站恢复 ZCode / WorkBuddy 会话的同类检查一起改了，旧版本留下的回收记录照样能恢复。另外，同步出错当场已经撤干净、只是记账那步失败的操作，重启时直接收尾，不再提示"需要人工复核"挡住所有写入。Claude Code 双账号会话页新增：预览列表里可以勾选要同步的会话（默认全勾，有全选 / 全不选，只同步勾上的）；不用的账号可以「隐藏」（只改灵桥的 config.json，账号目录和会话文件不动，可以取消隐藏）。
 - 3.6.2：同步到 Codex 的会话，AI 回复的类型（phase）按新版 Codex 的要求写成 commentary / final_answer（原来写的 final 会让 Codex 报 unknown variant，打不开）。新增测试：让 Codex 自带的 app-server 把灵桥写的会话完整读一遍。
