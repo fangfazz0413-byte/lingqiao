@@ -18,8 +18,20 @@ def app_support(home):
 
 
 def claude_meta_root(home):
-    """Claude 桌面版侧栏条目：…/Claude/claude-code-sessions/<账号>/<组织>/local_*.json"""
-    return app_support(home) / 'Claude' / 'claude-code-sessions'
+    """Claude 桌面版侧栏条目：…/Claude/claude-code-sessions/<账号>/<组织>/local_*.json
+
+    第三方壳（汉化版等）的数据目录可能叫 Claude-3p / local.claude.desktop.zh.cn 之类，
+    目录名以 Claude 开头的都扫一遍；官方的 Claude 优先，找不到任何已存在的就返回官方路径。
+    """
+    support = app_support(home)
+    official = support / 'Claude' / 'claude-code-sessions'
+    if official.is_dir():
+        return official
+    if support.is_dir():
+        for candidate in sorted(support.glob('Claude*/claude-code-sessions')):
+            if candidate.is_dir():
+                return candidate
+    return official
 
 
 def reveal(path):

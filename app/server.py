@@ -215,7 +215,9 @@ def _required(path,requirements):
 
 def target_reason(target):
     if target=='claude':
-        return '' if sync.cc_desktop_project_dir() else '未找到 Claude 桌面账号元数据，请先创建一条本地会话'
+        # 聊天记录写进 ~/.claude/projects 就能用 claude --resume 打开；
+        # 桌面侧栏条目只是增强，没有账号元数据也不再判为不可用（bridge_ops 会降级）。
+        return ''
     if target=='workbuddy':
         return _required(WB_DB,{'sessions':['id','cwd','user_id','title','status','created_at','updated_at','last_activity_at','transport','deleted_at']})
     if target=='zcode':

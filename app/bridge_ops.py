@@ -25,6 +25,46 @@ TOOLS = {"claude", "codex", "zcode", "workbuddy"}
 PROVENANCE = "provenance.json"
 
 
+def _zcode_tasks_index(z_db):
+    """ZCode 桌面版会话列表读的索引库，相对主库路径推导。"""
+    return str(Path(z_db).resolve().parents[2] / "v2" / "tasks-index.sqlite")
+
+
+def _register_zcode_task(z_db, sid, meta, turns, timestamp):
+    """把同步进主库的会话登记到 tasks-index，否则界面列表看不到。
+    provider/model 用占位值——历史会话没有真实模型，不编造。"""
+    tasks_db = _zcode_tasks_index(z_db)
+    if not Path(tasks_db).is_file():
+        return False
+    directory = meta["dir"]
+    title = meta.get("title", "")
+    t_ms = int(timestamp * 1000)
+    model = "lingqiao-import/" + str(meta.get("tool", "zcode"))
+    trace_id = None
+    with _conn(z_db) as c:
+        row = c.execute("SELECT trace_id FROM session WHERE id = ?", (sid,)).fetchone()
+        if row:
+            trace_id = row[0]
+    mta = {"taskId": sid, "traceId": trace_id, "title": title,
+           "workspacePath": directory, "createdAt": t_ms, "updatedAt": t_ms,
+           "mode": "build", "model": model, "thoughtLevel": None,
+           "provider": "lingqiao", "status": "completed", "target": None,
+           "titleOverridden": False}
+    texts = [t["text"] for t in turns if t.get("role") in ("user", "assistant")]
+    vals = (directory, directory, None, sid, title, "completed", "lingqiao",
+            "build", model, None, None, t_ms, t_ms, None, 0, 0, 0, 0,
+            json.dumps(mta, ensure_ascii=False), "\n".join(texts), 0,
+            None, None)
+    conn = sqlite3.connect(tasks_db, timeout=30)
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("INSERT OR REPLACE INTO tasks (workspace_key, workspace_path, workspace_identity, task_id, title, task_status, provider, mode, model, migration_source, forked_from_task_id, created_at, updated_at, unread_at, pinned, archived, deleted, title_overridden, meta_json, searchable_text, last_unread_at, cron_automation_id, off_peak_task_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def _quote(name):
     return '"' + name.replace('"', '""') + '"'
 
@@ -855,8 +895,11 @@ def codex_rollout_records(env, sid, meta, turns):
                "context_window": fields.get("context_window", 0)}
     lines = [{"timestamp": _iso(timestamp), "ordinal": 0, "type": "session_meta", "payload": payload}]
     for i,t in enumerate(turns):
+        # message 不带 id：ChatGPT 后端（rustponsesapi）把请求 input 里的 item id 当成
+        # 要查服务器持久化条目的引用；本地随机造的 msg_ id 服务器没存过，续聊直接报
+        # "Supplied input item IDs require persisted-item lookup"。不带 id 即整条内联，没有此问题。
         lines.append({"timestamp": _iso(timestamp+i), "ordinal": i+1, "type": "response_item",
-                      "payload": {"type":"message", "id":"msg_"+uuid.uuid4().hex, "role":t["role"],
+                      "payload": {"type":"message", "role":t["role"],
                                   "content":[{"type":"input_text" if t["role"]=="user" else "output_text", "text":t["text"]}]}})
     return lines
 
@@ -945,18 +988,20 @@ def _create_target(env, target, sid, out, meta, turns, j):
                           "uuid":mid,"timestamp":_iso(timestamp+i),"cwd":meta["dir"],"sessionId":sid})
             prev = mid
         _write_private(out,("\n".join(json.dumps(r,ensure_ascii=False) for r in lines)+"\n").encode())
-        root = _metadata_root(env)
-        # Use fixture/current account folder chosen by the caller; refuse guessed account paths.
+        # 桌面版侧栏条目：找得到账号/组织目录才写；找不到（没装官方桌面版、
+        # 用的第三方壳没有 claude-code-sessions、或从没建过本地会话）不报错，
+        # 聊天记录已写进 ~/.claude/projects，用 claude --resume 一样能打开。
         project = env.sync.cc_desktop_project_dir() if hasattr(env,"sync") else None
-        if not project:
-            raise ValueError("未找到 Claude 桌面账号元数据")
         if project:
+            root = _metadata_root(env)
             p = _contained(project, root) / ("local_"+sid+".json")
             j["created_files"].append(str(p)); _save(Path(j["opdir"]),j)
             _write_private(p,json.dumps({"sessionId":"local_"+sid,"cliSessionId":sid,"cwd":meta["dir"],
                                         "originCwd":meta["dir"],"createdAt":int(timestamp*1000),
                                         "lastActivityAt":int(timestamp*1000),"title":meta.get("title", ""),
                                         "isArchived":False,"permissionMode":"default"},ensure_ascii=False).encode())
+        else:
+            j["no_claude_sidebar"] = True
     elif target == "workbuddy":
         lines = [{"type":"ai-title","id":str(uuid.uuid4()),"timestamp":int(timestamp*1000),
                   "aiTitle":meta.get("title",""),"sessionId":sid,"cwd":meta["dir"]}]
@@ -1001,6 +1046,8 @@ def _create_target(env, target, sid, out, meta, turns, j):
             env.zi.write_one(c.cursor(),rows)
             env.zi.verify_one(c.cursor(),rows)
             _fk_check(c,j["databases"][0])
+        # 主库写完，同步登记 ZCode 会话列表索引（界面才能看到这条）。
+        _register_zcode_task(env.Z_DB, sid, meta, turns, timestamp)
 
 
 def _target_exists(env, target, value):
@@ -1070,7 +1117,10 @@ def sync_session(env, tool, src, target, meta, turns):
                 state.record_zcode_injection(_zpaths(env), env.Z_DB, key, sid, tool, src, meta.get("title", ""), meta.get("mtime", time.time()))
             _failpoint(env,"sync_state")
             _save(opdir,j,"completed")
-            return {"ok":True,"already":False,"note":target+" 会话已写入并保存恢复日志","turns":len(turns),"operation_id":j["id"]}
+            note = target+" 会话已写入并保存恢复日志"
+            if target == "claude" and j.get("no_claude_sidebar"):
+                note += "；Claude 桌面版侧栏条目未建（本机没有桌面账号元数据），用 claude --resume " + sid + " 打开"
+            return {"ok":True,"already":False,"note":note,"turns":len(turns),"operation_id":j["id"]}
         except Exception as exc:
             j["error"]=str(exc)
             try:

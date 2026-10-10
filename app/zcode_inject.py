@@ -6,6 +6,7 @@
   python3 zcode_inject.py --db /tmp/zcode-lab.sqlite   # 练习库
   python3 zcode_inject.py                      # 真库注入（默认 ~/.zcode/cli/db/db.sqlite）
   python3 zcode_inject.py --rollback           # 按清单回滚（删掉注入的会话）
+  python3 zcode_inject.py --reindex            # 补登历史已注入但缺索引的会话
 
 设计要点：
   - 内容来源：复用 sync.collect()（含 3 天窗口、系统块过滤、codeg 跳过）
@@ -17,6 +18,9 @@
   - 模仿真实行结构：session + session_entry(runtime/model_selection,
     runtime/execution_state) + message(semantics.uiVisibility=visible) +
     part(text/step-start/step-finish)，sequence 交给库内触发器自动填充
+  - 桌面版会话列表不直接读主库，而是读索引库 tasks-index.sqlite 的
+    tasks 表；注入后必须同步登记一行，否则界面上看不到（灵桥 3.4.7 修复）。
+    --reindex 可补登历史已注入但缺索引的会话。
 """
 import argparse
 import json
@@ -36,6 +40,7 @@ LEDGER = BRIDGE / "ledger.json"
 MANIFEST = BRIDGE / "zcode-injected-manifest.json"
 APP_STATE = REPO / "app" / "state.json"  # App 自动同步开关
 REAL_DB = str(HOME / ".zcode" / "cli" / "db" / "db.sqlite")
+REAL_TASKS_INDEX = str(HOME / ".zcode" / "v2" / "tasks-index.sqlite")
 BATCH_SLEEP = 0.3          # 每个会话写入后的间隔，给 App 留并发余量
 ZCODE_VERSION = "0.16.9"   # 与库内最新会话一致
 
@@ -74,6 +79,13 @@ SQL_VERIFY_MSGS = (
     " WHERE session_id = ?"
 )
 SQL_VERIFY_PARTS = "SELECT count(*) FROM part WHERE session_id = ?"
+
+# tasks-index 会话列表索引（界面列表读这张表，不读主库）
+SQL_INS_TASK = "INSERT OR REPLACE INTO tasks (workspace_key, workspace_path, workspace_identity, task_id, title, task_status, provider, mode, model, migration_source, forked_from_task_id, created_at, updated_at, unread_at, pinned, archived, deleted, title_overridden, meta_json, searchable_text, last_unread_at, cron_automation_id, off_peak_task_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+SQL_DEL_TASK = "DELETE FROM tasks WHERE task_id = ?"
+SQL_TASK_EXISTS = "SELECT 1 FROM tasks WHERE task_id = ?"
+SQL_SESSION_FOR_TASK = "SELECT id, directory, title, time_created, time_updated, trace_id FROM session WHERE id = ?"
+SQL_TEXT_PARTS = "SELECT m.data, p.data FROM message m JOIN part p ON p.message_id = m.id WHERE m.session_id = ? ORDER BY m.sequence, p.sequence"
 
 
 def oid(prefix: str) -> str:
@@ -190,7 +202,8 @@ def build_session_rows(s, tool, project_id):
                    t_created, t_updated, "interactive", "first_input",
                    str(uuid.uuid4()))
     return {"sid": sid, "session": session_row, "entries": entries,
-            "messages": messages, "parts": parts, "title": title}
+            "messages": messages, "parts": parts, "title": title,
+            "t_created": t_created, "t_updated": t_updated, "turns": turns}
 
 
 def write_one(cur, rows):
@@ -201,6 +214,85 @@ def write_one(cur, rows):
         cur.execute(SQL_INS_MESSAGE, m)
     for p in rows["parts"]:
         cur.execute(SQL_INS_PART, p)
+
+
+# ---------- tasks-index 会话列表索引 ----------
+# 桌面版会话列表读 ~/.zcode/v2/tasks-index.sqlite 的 tasks 表，不直接读主库。
+# 注入后必须同步登记一行，否则界面上看不到（灵桥 3.4.7 修复）。
+
+def tasks_index_path(db_path):
+    """真实主库返回真实索引库路径；练习库(--db)不同步索引，返回 None。"""
+    if Path(db_path).resolve() == Path(REAL_DB).resolve():
+        return REAL_TASKS_INDEX
+    return None
+
+
+def candidate_manifests(db_path):
+    """所有可能存有注入清单的 .bridge 目录：默认仓库 + 灵桥 App 实际运行目录。
+    App 装在哪个目录，清单就落在哪个目录的 .bridge 下（如 ~/AI会话仓库），
+    命令行默认目录可能只是源码目录、没有清单。逐个尝试，读得出的都收集。"""
+    cands = []
+    seen = set()
+    roots = [BRIDGE, Path.home() / "AI会话仓库" / ".bridge"]
+    for base in roots:
+        p = base / "zcode-injected-manifest.json"
+        key = str(p)
+        if key in seen or not p.exists():
+            continue
+        seen.add(key)
+        try:
+            man = bs.load_zcode_manifest(p, db_path)
+        except Exception:
+            continue            # 身份对不上或文件损坏就跳过这份
+        cands.append((p, man))
+    return cands
+
+
+def build_task_row(sid, directory, title, t_created, t_updated, trace_id,
+                   tool, texts):
+    """组装 tasks 表一行；provider/model 用占位值，不编造历史模型。"""
+    meta = {"taskId": sid, "traceId": trace_id, "title": title,
+            "workspacePath": directory, "createdAt": t_created,
+            "updatedAt": t_updated, "mode": "build",
+            "model": "lingqiao-import/" + tool, "thoughtLevel": None,
+            "provider": "lingqiao", "status": "completed", "target": None,
+            "titleOverridden": False}
+    return (directory, directory, None, sid, title, "completed", "lingqiao",
+            "build", "lingqiao-import/" + tool, None, None, t_created,
+            t_updated, None, 0, 0, 0, 0, json.dumps(meta, ensure_ascii=False),
+            "\n".join(texts), 0, None, None)
+
+
+def upsert_task(tasks_db, rows, tool):
+    """往 tasks-index 登记一行；库不存在时跳过（不阻断注入）。返回是否写入。"""
+    if not tasks_db or not Path(tasks_db).exists():
+        return False
+    texts = [text for role, text in rows.get("turns", [])
+             if role in ("user", "assistant")]
+    task_row = build_task_row(rows["sid"], rows["session"][3], rows["title"],
+                              rows["t_created"], rows["t_updated"],
+                              rows["session"][12], tool, texts)
+    conn = sqlite3.connect(tasks_db, timeout=60)
+    try:
+        conn.execute("PRAGMA busy_timeout = 60000")
+        conn.execute(SQL_INS_TASK, task_row)
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def delete_task(tasks_db, sid):
+    """回滚时删除 tasks-index 里对应行。"""
+    if not tasks_db or not Path(tasks_db).exists():
+        return
+    conn = sqlite3.connect(tasks_db, timeout=60)
+    try:
+        conn.execute("PRAGMA busy_timeout = 60000")
+        conn.execute(SQL_DEL_TASK, (sid,))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def verify_one(cur, rows):
@@ -319,7 +411,9 @@ def do_inject(db_path, dry_run):
         cur = conn.cursor()
         before = cur.execute(SQL_COUNT_SESSION).fetchone()[0]
         projects = resolve_project_ids(conn, targets)
+        tasks_db = tasks_index_path(db_path)
         count = 0
+        indexed = 0
         try:
             for tool, key, session in targets:
                 rows = build_session_rows(session, tool, projects[session["dir"]])
@@ -348,6 +442,9 @@ def do_inject(db_path, dry_run):
                         conn.commit()
                     _restore_snapshots(paths, snapshots)
                     raise
+                # 主库注入成功后，同步登记会话列表索引（界面才能看到）。
+                if upsert_task(tasks_db, rows, tool):
+                    indexed += 1
                 count += 1
                 print(f"  ✓ [{tool}] {rows['title'][:30]} msgs={len(rows['messages'])}")
                 time.sleep(BATCH_SLEEP)
@@ -355,9 +452,61 @@ def do_inject(db_path, dry_run):
         finally:
             conn.close()
         print(f"完成：注入 {count}/{len(targets)}，会话总数 {before} → {after}")
+        if tasks_db:
+            print(f"会话列表索引：登记 {indexed}/{count} → {tasks_db}")
         if Path(db_path).resolve() == Path(REAL_DB).resolve():
             print("请重启 ZCode 桌面版验证会话列表。")
         return 0
+
+
+def do_reindex(db_path):
+    """补登历史已注入但缺索引的会话（修复 3.4.7 之前的注入）。
+    清单可能散落在多个 .bridge 目录（App 安装目录 ≠ 命令行源码目录），逐个合并。"""
+    tasks_db = tasks_index_path(db_path)
+    if not tasks_db or not Path(tasks_db).exists():
+        print("非真实库或索引库不存在，无需补登。")
+        return 0
+    cands = candidate_manifests(db_path)
+    entries = {}
+    for p, man in cands:
+        for e in man["sessions"]:
+            if e.get("status") == "committed":
+                entries[e["id"]] = e     # 同 id 去重，后读的覆盖先读的
+    if not entries:
+        print("各候选清单均无 committed 会话。")
+        return 0
+    tconn = sqlite3.connect(tasks_db, timeout=60)
+    tconn.execute("PRAGMA busy_timeout = 60000")
+    added = 0
+    skipped = 0
+    try:
+        with connect_db(db_path, readonly=True) as conn:
+            for sid, entry in entries.items():
+                if tconn.execute(SQL_TASK_EXISTS, (sid,)).fetchone():
+                    skipped += 1
+                    continue
+                row = conn.execute(SQL_SESSION_FOR_TASK, (sid,)).fetchone()
+                if not row:
+                    print(f"  跳过（主库无此会话）：{sid}")
+                    continue
+                _id, directory, title, t_created, t_updated, trace_id = row
+                texts = []
+                for mdata, pdata in conn.execute(SQL_TEXT_PARTS, (sid,)):
+                    if json.loads(mdata).get("role") in ("user", "assistant"):
+                        pd = json.loads(pdata)
+                        if pd.get("type") == "text" and pd.get("text"):
+                            texts.append(pd["text"])
+                tool = entry.get("tool", "zcode")
+                tconn.execute(SQL_INS_TASK, build_task_row(
+                    sid, directory, title, t_created, t_updated, trace_id,
+                    tool, texts))
+                added += 1
+                print(f"  ✓ 补登 {title[:30]!r} ({sid[:18]}…)")
+        tconn.commit()
+    finally:
+        tconn.close()
+    print(f"补登完成：新增 {added}，已存在跳过 {skipped}。")
+    return 0
 
 
 def do_rollback(db_path):
@@ -394,6 +543,7 @@ def do_rollback(db_path):
         ledger=load_json(paths["ledger"],{})
         manifest=bs.load_zcode_manifest(paths["manifest"],db_path)
         removed_ids = {entry["id"] for entry in removed}
+        tasks_db = tasks_index_path(db_path)
         for entry in removed:
             key, sid = entry["ledger_key"], entry["id"]
             if ledger.get(key) == sid:
@@ -401,6 +551,7 @@ def do_rollback(db_path):
             records = bs.provenance_records(paths["provenance"])
             if sid in records:
                 bs.tombstone_provenance(paths["provenance"], sid, status="rolled_back")
+            delete_task(tasks_db, sid)
         for entry in manifest["sessions"]:
             if entry.get("id") in removed_ids:
                 entry["status"] = "rolled_back"
@@ -416,9 +567,12 @@ def main():
     ap.add_argument("--db", default=REAL_DB, help="目标库路径")
     ap.add_argument("--dry-run", action="store_true", help="只列出，不写入")
     ap.add_argument("--rollback", action="store_true", help="按清单回滚")
+    ap.add_argument("--reindex", action="store_true", help="补登历史已注入但缺索引的会话")
     args = ap.parse_args()
     if args.rollback:
         sys.exit(do_rollback(args.db))
+    if args.reindex:
+        sys.exit(do_reindex(args.db))
     sys.exit(do_inject(args.db, args.dry_run))
 
 
