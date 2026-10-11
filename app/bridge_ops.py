@@ -834,6 +834,35 @@ def list_trash(env):
         return out
 
 
+def empty_trash(env):
+    """一键清空回收站：彻底删除回收站里所有备份，不可恢复。
+    只删 list_trash 列得出的条目——operations 里 action=delete 且已删完/待复核的目录，
+    以及 trash/ 旧版遗留目录；sync 等其他操作的 journal 不动。"""
+    import shutil as _shutil
+    removed, failed = [], []
+    with state.operation_lock(Path(env.BRIDGE) / "operation.lock"):
+        ops = Path(env.BRIDGE) / "operations"
+        for p in sorted(ops.glob("*/journal.json")):
+            j = _load(p, {})
+            if not ((j.get("action") == "delete" and j.get("status") in {"deleted", "restoring"}) or j.get("status") == "needs_attention"):
+                continue
+            d = p.parent
+            try:
+                _shutil.rmtree(d)
+                removed.append(j.get("id") or d.name)
+            except OSError as exc:
+                failed.append({"trash_id": j.get("id") or d.name, "error": str(exc)})
+        legacy = Path(env.BRIDGE) / "trash"
+        if legacy.is_dir():
+            for d in sorted(p for p in legacy.iterdir() if p.is_dir()):
+                try:
+                    _shutil.rmtree(d)
+                    removed.append("legacy-" + d.name)
+                except OSError as exc:
+                    failed.append({"trash_id": "legacy-" + d.name, "error": str(exc)})
+    return {"ok": not failed, "removed": removed, "removed_count": len(removed), "failed": failed}
+
+
 def _zpaths(env):
     base=Path(env.BRIDGE)
     return {"ledger":Path(env.LEDGER),"manifest":base/"zcode-injected-manifest.json","provenance":_provenance_path(env),"lock":base/"operation.lock"}

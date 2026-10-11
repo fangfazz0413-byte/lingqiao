@@ -124,6 +124,7 @@ def make_handler(env):
                 elif u.path=='/api/delete': result=env.delete_session(body.get('tool',''),body.get('src',''))
                 elif u.path=='/api/delete-many': result=env.delete_sessions_many(body.get('items',[]))
                 elif u.path=='/api/restore': result=env.bridge_ops.restore_session(env,body.get('trash_id','')); env.invalidate()
+                elif u.path=='/api/trash/empty': result=env.empty_trash()
                 elif u.path=='/api/usage/refresh': result=env.usage_backend.refresh_snapshot(env.MT_CACHE,force=body.get('force',True))
                 elif u.path=='/api/keys': result=env.usage_backend.set_provider_keys(body)
                 elif u.path=='/api/usage/keys': result=env.usage_backend.set_provider_keys(body.get('keys',{}))

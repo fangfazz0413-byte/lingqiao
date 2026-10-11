@@ -294,6 +294,14 @@ def delete_sessions_many(items):
     invalidate();return result
 
 
+def empty_trash():
+    """一键清空回收站：彻底删除所有回收备份，不可恢复。"""
+    if _attention: raise ValueError('存在需要人工复核的中断操作，暂时停止清空回收站')
+    result=bridge_ops.empty_trash(ENV)
+    log('empty-trash removed='+str(result.get('removed_count',0))+' failed='+str(len(result.get('failed',[]))))
+    invalidate();return result
+
+
 def steal_codex_meta_fields():
     # 格式字段照着这台电脑上 Codex 自己最近写的会话来（见 bridge_ops.codex_meta_fields）；指令正文不抄别的会话。
     return bridge_ops.codex_meta_fields(ENV)

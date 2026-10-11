@@ -87,6 +87,8 @@
   .inline-error { color: #ff9f0a; font-size: 12px; margin: 8px 0; }
   .trash-row { padding: 15px 16px; display: flex; gap: 12px; align-items: center; }
   .trash-row .row-main { white-space: normal; }
+  .trash-toolbar { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
+  .trash-toolbar .hint { font-size: 12px; color: var(--text3); }
   body.view-usage, body.view-usage main { background: var(--bg); }
   body.view-usage .topbar { background: var(--bg2); border-bottom-color: var(--border); }
   body.view-usage .crumb, body.view-usage .status { color: var(--text2); }
@@ -671,6 +673,7 @@
     <div id="page-trash">
       <div class="headline">回收站</div>
       <div class="subline">恢复会话文件、已备份的库记录与关联同步账本。缺少必要备份的旧删除记录会显示原因。</div>
+      <div class="trash-toolbar"><button class="btn danger" id="trash-empty">🗑 一键清理回收站</button><span class="hint">彻底删除回收站里所有备份，不可恢复</span></div>
       <div id="trash-list"><div class="loading">正在读取回收站…</div></div>
     </div>
     <div id="plugin-pages"></div>
@@ -1124,6 +1127,26 @@ async function loadTrash() {
     $("#trash-list").innerHTML = `<div class="empty">读取回收站失败：${esc(error.message)}</div>`; serviceStatus("读取回收站失败", false);
   }
 }
+$("#trash-empty").addEventListener("click", async () => {
+  let count = 0;
+  try { const r = await apiJson("/api/trash"); count = (r.items || r.trash || r.entries || []).length; } catch {}
+  if (!count) { toast("回收站已经是空的"); return; }
+  const button = $("#trash-empty");
+  if (button.dataset.arm !== "1") {
+    button.dataset.arm = "1"; button.textContent = `再次点击确认：彻底删除 ${count} 条备份（不可恢复）`;
+    setTimeout(() => { button.dataset.arm = ""; button.textContent = "🗑 一键清理回收站"; }, 5000);
+    return;
+  }
+  button.dataset.arm = ""; button.disabled = true; button.textContent = "正在清空回收站…";
+  try {
+    const result = await apiJson("/api/trash/empty", { method: "POST", body: {}, timeoutMs: 120000 });
+    const failed = (result.failed || []).length, n = result.removed_count || 0;
+    toast(failed ? `已清空 ${n} 条，${failed} 条删除失败（详见控制台）` : `回收站已清空，彻底删除 ${n} 条备份`, !failed);
+    if (failed) console.warn("清空回收站部分失败", result.failed);
+    await loadTrash();
+  } catch (error) { toast("清空回收站失败：" + error.message, false); }
+  finally { button.disabled = false; button.textContent = "🗑 一键清理回收站"; }
+});
 /* 清理计划：预览、逐条选择与提交分开，后端再次核验后执行。 */
 const cleanupState = { plan: null, selection: null, selectedIds: new Set(), committingIds: null, request: 0, controller: null, timer: null,
   expiryTimer: null, previewing: false, running: false, polling: false, visible: false,
