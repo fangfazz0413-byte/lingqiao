@@ -306,6 +306,11 @@
   .sec-title { font-size: 15px; font-weight: 700; margin: 4px 0 10px;
     display: flex; align-items: center; gap: 10px; }
   .sec-title .hint { font-size: 12px; color: var(--text3); font-weight: 400; }
+  .sel-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 10px;
+    background: var(--bg2, rgba(127,127,127,.08)); border-radius: 8px; }
+  .sel-bar .sel-count { font-size: 12px; color: var(--text3); margin-right: auto; }
+  .sel-btn { width: 15px; height: 15px; margin-right: 10px; accent-color: var(--accent, #0a84ff);
+    flex: none; cursor: pointer; }
   .group-label { font-size: 11px; color: var(--text3); padding: 10px 4px 4px; }
   .row {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
@@ -642,7 +647,13 @@
     </div>
 
     <div class="sec-title">会话列表 <span class="hint" id="list-hint"></span></div>
-    <div class="hint-note">按标题和目录搜索 · 文字对话分批加载，附件与工具记录请在原应用查看</div>
+    <div class="sel-bar" id="sel-bar" style="display:none">
+      <button class="btn" id="sel-all">全选</button>
+      <button class="btn" id="sel-none">全不选</button>
+      <span class="sel-count" id="sel-count">已选 0 条</span>
+      <button class="btn danger" id="sel-delete">删除所选</button>
+    </div>
+    <div class="hint-note">按标题和目录搜索 · 文字对话分批加载，附件与工具记录请在原应用查看 · 勾选左侧方框可批量删除</div>
     <div id="list"><div class="loading">正在读取四家工具的会话…</div></div>
     </div>
 
@@ -791,7 +802,8 @@ function brandIcon(name, cls = "") {
 const GROUP_NAMES = { all: "全部会话", ...TOOL_NAMES };
 const state = { group: "all", size: "0", time: "0", q: "", data: [], counts: {}, capabilities: {},
   scanStatus: {}, listRequest: 0, listController: null, scanTimer: null,
-  pending: new Set(), hidden: new Set(), details: new Map(), trashRequest: 0, trashController: null };
+  pending: new Set(), hidden: new Set(), details: new Map(), trashRequest: 0, trashController: null,
+  selected: new Set() };
 const sessionKey = s => `${s.tool}:${s.src}`;
 const isSessionGroup = group => group === "all" || Object.hasOwn(TOOL_NAMES, group);
 function fmtSize(b) {
@@ -906,9 +918,10 @@ async function loadList(force = false) {
       for (const key of state.hidden) if (!sessions.some(s => sessionKey(s) === key)) state.hidden.delete(key);
     }
     state.data = sessions.filter(s => !state.hidden.has(sessionKey(s)));
+    for (const key of [...state.selected]) if (!state.data.some(s => sessionKey(s) === key)) state.selected.delete(key);
     state.counts = result.all_counts || {}; state.capabilities = result.capabilities || {};
     state.scanStatus = result.scan_status || { scanning: false, generation: 0 };
-    updateSummary(); renderList();
+    updateSummary(); renderList(); updateSelBar();
     serviceStatus(state.scanStatus.error ? `扫描异常：${state.scanStatus.error}` : (state.scanStatus.scanning ? "后台扫描中…" : "服务在线"), !state.scanStatus.error);
     scheduleScanPoll();
   } catch (error) {
@@ -945,8 +958,10 @@ function renderList() {
         return `<button class="tbtn ${done ? "done" : !capability.supported ? "disabled" : busy ? "busy" : ""}" ${disabled ? "disabled" : ""} data-target="${target}" title="${esc(capability.reason).replace(/"/g, "&quot;")}">${brandIcon(target)}${busy ? "同步中…" : TOOL_NAMES[target] + (done ? " ✓" : "")}</button>`;
       }).join("") + "</div>";
     }
-    row.innerHTML = `<div class="row-head"><span class="tool-badge tb-${s.tool}">${brandIcon(s.tool)}${esc(s.tool_name)}</span><div class="row-main"><div class="row-title">${esc(s.title)}</div><div class="row-sub">${fmtTime(s.mtime)} · ${esc(s.dir)}</div></div>${syncHtml}<div class="row-size">${fmtSize(s.size)}</div><button class="exp-btn" title="导出这条会话：打成压缩包，拿到另一台电脑的灵桥里导入" ${s.missing_file ? "disabled" : ""}>导出</button><button class="del-btn" title="移入回收站" ${(state.pending.has(`delete:${key}`) || s.archived || s.kind === "subagent") ? "disabled" : ""}>🗑</button></div><div class="detail"></div>`;
-    row.querySelector(".row-head").addEventListener("click", event => { if (!event.target.closest(".sync-to") && !event.target.closest(".del-btn") && !event.target.closest(".exp-btn")) toggleDetail(s); });
+    row.innerHTML = `<div class="row-head"><input type="checkbox" class="sel-btn" title="勾选这条会话，可批量删除" ${state.selected.has(key) ? "checked" : ""} ${(s.kind === "subagent") ? "disabled" : ""}><span class="tool-badge tb-${s.tool}">${brandIcon(s.tool)}${esc(s.tool_name)}</span><div class="row-main"><div class="row-title">${esc(s.title)}</div><div class="row-sub">${fmtTime(s.mtime)} · ${esc(s.dir)}</div></div>${syncHtml}<div class="row-size">${fmtSize(s.size)}</div><button class="exp-btn" title="导出这条会话：打成压缩包，拿到另一台电脑的灵桥里导入" ${s.missing_file ? "disabled" : ""}>导出</button><button class="del-btn" title="移入回收站" ${(state.pending.has(`delete:${key}`) || s.kind === "subagent") ? "disabled" : ""}>🗑</button></div><div class="detail"></div>`;
+    row.querySelector(".row-head").addEventListener("click", event => { if (!event.target.closest(".sync-to") && !event.target.closest(".del-btn") && !event.target.closest(".exp-btn") && !event.target.closest(".sel-btn")) toggleDetail(s); });
+    const selBox = row.querySelector(".sel-btn");
+    if (selBox && !selBox.disabled) selBox.addEventListener("change", () => { if (selBox.checked) state.selected.add(key); else state.selected.delete(key); updateSelBar(); });
     row.querySelector(".exp-btn").addEventListener("click", () => withTransfer(page => page.exportSessions([s])));
     row.querySelectorAll(".tbtn:not(:disabled)").forEach(button => button.addEventListener("click", () => doSync(button, s)));
     row.querySelector(".del-btn").addEventListener("click", () => askDelete(s));
@@ -969,14 +984,52 @@ function askDelete(s) {
   $("#del-modal").classList.add("show");
 }
 function closeDel() { $("#del-modal").classList.remove("show"); _delTarget = null; }
+function selectableSessions() { return state.data.filter(s => !(s.kind === "subagent")); }
+function updateSelBar() {
+  const n = state.selected.size, bar = $("#sel-bar");
+  bar.style.display = n ? "flex" : "none";
+  $("#sel-count").textContent = `已选 ${n} 条`;
+  $("#sel-delete").textContent = n ? `删除所选 (${n})` : "删除所选";
+}
+$("#sel-all").addEventListener("click", () => { for (const s of selectableSessions()) state.selected.add(sessionKey(s)); renderList(); updateSelBar(); });
+$("#sel-none").addEventListener("click", () => { state.selected.clear(); renderList(); updateSelBar(); });
+$("#sel-delete").addEventListener("click", () => {
+  const items = state.data.filter(s => state.selected.has(sessionKey(s)));
+  if (!items.length) return;
+  _delTarget = items;
+  const total = items.reduce((a, s) => a + (s.size || 0), 0);
+  $("#del-body").innerHTML = `<b>批量删除 ${items.length} 条会话</b><br>` +
+    items.slice(0, 8).map(s => `${TOOL_NAMES[s.tool]} · ${esc(s.title)}`).join("<br>") +
+    (items.length > 8 ? `<br>… 另有 ${items.length - 8} 条` : "") + `<br>共 ${fmtSize(total)}`;
+  $("#del-warning").textContent = "这些会话会先备份再移入回收站，关联同步账本记录会解除，可在回收站逐条恢复。";
+  $("#del-modal").classList.add("show");
+});
 $("#del-confirm").addEventListener("click", async () => {
-  const s = _delTarget; if (!s) return;
-  const key = sessionKey(s), button = $("#del-confirm");
+  const target = _delTarget; if (!target) return;
+  const button = $("#del-confirm");
+  if (Array.isArray(target)) {
+    const items = target.map(s => ({ tool: s.tool, src: s.src }));
+    button.disabled = true; button.textContent = "正在备份并删除…";
+    try {
+      const result = await apiJson("/api/delete-many", { method: "POST", body: { items }, timeoutMs: 300000 });
+      const doneKeys = new Set((result.deleted || []).map(d => `${d.tool}:${d.src}`));
+      for (const key of doneKeys) { state.hidden.add(key); state.details.get(key)?.controller?.abort(); state.details.delete(key); state.selected.delete(key); }
+      state.data = state.data.filter(x => !doneKeys.has(sessionKey(x)));
+      updateSummary(); renderList(); updateSelBar(); closeDel();
+      const errs = (result.errors || []).length, n = result.deleted_count || doneKeys.size;
+      toast(errs ? `已删除 ${n} 条，${errs} 条失败（详见控制台）` : `已把 ${n} 条会话移入回收站，可在左侧回收站恢复`, !errs);
+      if (errs) console.warn("批量删除部分失败", result.errors);
+      loadList(true);
+    } catch (error) { toast("批量删除失败：" + error.message, false); }
+    finally { button.disabled = false; button.textContent = "移入回收站"; }
+    return;
+  }
+  const s = target, key = sessionKey(s);
   button.disabled = true; button.textContent = "正在备份并删除…"; state.pending.add(`delete:${key}`);
   try {
     await apiJson("/api/delete", { method: "POST", body: { tool: s.tool, src: s.src }, timeoutMs: 120000 });
-    state.hidden.add(key); state.details.get(key)?.controller?.abort(); state.details.delete(key);
-    state.data = state.data.filter(x => sessionKey(x) !== key); updateSummary(); renderList(); closeDel();
+    state.hidden.add(key); state.details.get(key)?.controller?.abort(); state.details.delete(key); state.selected.delete(key);
+    state.data = state.data.filter(x => sessionKey(x) !== key); updateSummary(); renderList(); updateSelBar(); closeDel();
     toast("已移入回收站，可在左侧回收站恢复"); loadList(true);
   } catch (error) { toast("删除失败：" + error.message, false); }
   finally { state.pending.delete(`delete:${key}`); button.disabled = false; button.textContent = "移入回收站"; }

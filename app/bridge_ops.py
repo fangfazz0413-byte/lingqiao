@@ -633,6 +633,38 @@ def delete_session(env, tool, src, *, pre_delete_check=None):
             raise
 
 
+def delete_sessions(env, items):
+    """批量删除多条会话：逐条复用 delete_session（每条独立回收站、可单独恢复）。
+    单条出错不中断整批；返回 {deleted, skipped, errors} 三元组供前端展示。
+    items 是 [{'tool':..., 'src':...}, ...]，tool 必须在 TOOLS 白名单内。"""
+    if not isinstance(items, list) or not items:
+        raise ValueError("没有要删除的会话")
+    if len(items) > 500:
+        raise ValueError("单次批量删除不能超过 500 条")
+    deleted, skipped, errors = [], [], []
+    seen = set()
+    for it in items:
+        if not isinstance(it, dict):
+            errors.append({"item": str(it)[:60], "error": "条目格式不对"})
+            continue
+        tool, src = it.get("tool", ""), it.get("src", "")
+        if tool not in TOOLS or not isinstance(src, str) or not src:
+            errors.append({"item": str(src)[:60] or str(tool), "error": "未知工具或会话标识"})
+            continue
+        key = tool + ":" + src
+        if key in seen:
+            skipped.append({"tool": tool, "src": src, "reason": "重复条目"})
+            continue
+        seen.add(key)
+        try:
+            r = delete_session(env, tool, src)
+            deleted.append({"tool": tool, "src": src, "trash_id": r.get("trash_id")})
+        except Exception as exc:
+            errors.append({"tool": tool, "src": src, "error": str(exc)})
+    return {"ok": not errors, "deleted": deleted, "skipped": skipped,
+            "errors": errors, "deleted_count": len(deleted)}
+
+
 def _trash_dir(env, trash_id):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", trash_id):
         raise ValueError("非法恢复编号")

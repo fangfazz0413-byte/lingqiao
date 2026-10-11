@@ -268,9 +268,29 @@ def sync_one(tool,src,target):
 def delete_session(tool,src):
     if _attention: raise ValueError('存在需要人工复核的中断操作，暂时停止新删除')
     meta=find_meta(tool,src)
-    if meta.get('archived') or meta.get('kind')=='subagent': raise ValueError('归档和子代理线程仅浏览，请使用原工具管理')
+    if meta.get('kind')=='subagent': raise ValueError('子代理线程仅浏览，请使用原工具管理')
     result=bridge_ops.delete_session(ENV,tool,src)
     log('delete operation='+result['trash_id']+' tool='+tool)
+    invalidate();return result
+
+
+def delete_sessions_many(items):
+    """批量删除：逐条做和单删一样的前置校验（子代理跳过），再交给 bridge_ops.delete_sessions。"""
+    if _attention: raise ValueError('存在需要人工复核的中断操作，暂时停止新删除')
+    if not isinstance(items,list) or not items: raise ValueError('没有要删除的会话')
+    allowed=[];skipped=[]
+    for it in items:
+        tool,src=(it.get('tool','') if isinstance(it,dict) else ''),(it.get('src','') if isinstance(it,dict) else '')
+        try:
+            meta=find_meta(tool,src)
+            if meta.get('kind')=='subagent':
+                skipped.append({'tool':tool,'src':src,'reason':'子代理线程仅浏览'});continue
+            allowed.append({'tool':tool,'src':src})
+        except ValueError as e:
+            skipped.append({'tool':tool,'src':src,'reason':str(e)})
+    result=bridge_ops.delete_sessions(ENV,allowed) if allowed else {'ok':True,'deleted':[],'skipped':[],'errors':[],'deleted_count':0}
+    result['skipped']=(result.get('skipped') or [])+skipped
+    log('delete-many count='+str(result.get('deleted_count',0))+' errors='+str(len(result.get('errors',[]))))
     invalidate();return result
 
 
